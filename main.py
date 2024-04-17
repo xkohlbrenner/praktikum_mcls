@@ -1,6 +1,8 @@
 import random
 import math
 import bins
+import photon
+import input
 from PIL import Image
 
 
@@ -27,7 +29,7 @@ randomNum = float(1-random.random())
 
 
 if __name__ == '__main__':
-    NR = 1000	 #number of radial positions  
+    NR = 100	 #number of radial positions  
     x = y = z= 0     #photon position
     ux =uy= uz  = 0 #photon trajectory as cosines
     uxx= uyy= uzz  = 0	#temporary values used during SPIN 
@@ -72,8 +74,23 @@ if __name__ == '__main__':
     mus         = 0.0     #cm^-1 
     g           = 0.90  
     nt          = 1.33
-    Nphotons    = 1000000 #set number of photons in simulation 
-    radial_size = 3.0   #cm, total range over which bins extend 
+    Nphotons    = 100000 #set number of photons in simulation 
+    radial_size = 3.0   #cm, total range over which bins extend
+    if not input.default:
+        try:
+            testfornumeric = input.mua + input.mus + input.g  + input.nt + input.Nphotons + input.radial_size #check, if all input are numeric
+            mua         = input.mua     #cm^-1 
+            mus         = input.mus     #cm^-1 
+            g           = input.g  
+            nt          = input.nt
+            Nphotons    = input.Nphotons #set number of photons in simulation 
+            radial_size = input.radial_size   #cm, total range over which bins extend
+        except:
+            print("Default values are taken.")
+    else:
+        print("Default values are taken.")
+
+
     #IF NR IS ALTERED, THEN USER MUST ALSO ALTER THE ARRAY DECLARATION TO A SIZE = NR + 1. 
     dr          = radial_size/NR  #cm 
     albedo      = mus/(mus + mua)
@@ -86,13 +103,10 @@ if __name__ == '__main__':
         #LAUNCh
         #Initialize photon position and trajectory.
         #Implements an isotropic point source.
+        
+        phot = photon.photon(i_photon)
         i_photon +=1
-        W = 1.0
-        photon_status = 1
 
-        x=0
-        y=0
-        z=0
 
         #Randomly set photon trajectory to yield an isotropic source.
         costheta = 2.0*(1-random.random()) - 1.0   
@@ -102,31 +116,32 @@ if __name__ == '__main__':
         uy = sintheta*math.sin(psi)
         uz = costheta
     
-        while photon_status:
+
+        #while phot.get_status():
+        while phot.get_status():
+
             rnd = 1 - random.random()
             s = -math.log(rnd)/(mua + mus)
-            x += s*ux
-            y += s*uy
-            z += s*uz
+            phot.update_positon(s*ux, s*uy, s*uz)
 
             #Drop photon weight (W) into local bin.
-            absorb = W*(1 - albedo)      #photon weight absorbed at this step 
-            W -= absorb                  #decrement WEIGHT by amount absorbed 
+            absorb = phot.get_weight()*(1 - albedo)      #photon weight absorbed at this step 
+            phot.update_weight(phot.get_weight()-absorb)  #decrement WEIGHT by amount absorbed 
             
             #spherical 
-            r = math.sqrt(x*x + y*y + z*z)   #current spherical radial position 
+            r = phot.get_spherical_position()   #current spherical radial position 
             ir = round(r/dr)                    #ir = index to spatial bin 
             if (ir >= NR): ir = NR        #last bin is for overflow 
             Csph[ir] += absorb           #DROP absorbed weight into bin 
             
-            #cylindrical 
-            r = math.sqrt(x*x + y*y)         #current cylindrical radial position 
+            #cylindrical
+            r = phot.get_cylindrical_position()         #current cylindrical radial position 
             ir = round(r/dr)                    #ir = index to spatial bin 
             if (ir >= NR): ir = NR        #last bin is for overflow 
             Ccyl[ir] += absorb           #DROP absorbed weight into bin 
             
-            #planar 
-            r = abs(z)                  #current planar radial position 
+            #planar  
+            r = phot.get_planar_position()                 #current planar radial position 
             ir = round(r/dr)                   #ir = index to spatial bin 
             if (ir >= NR): ir = NR        #last bin is for overflow 
             Cpla[ir] += absorb           #DROP absorbed weight into bin 
@@ -174,13 +189,15 @@ if __name__ == '__main__':
             #If photon weight below THRESHOLD, then terminate photon using Roulette technique.
             #Photon has CHANCE probability of having its weight increased by factor of 1/CHANCE,
             #and 1-CHANCE probability of terminating.
-            if (W < threshold):
+
+            if (phot.get_weight() < threshold):
                 if (random.random() <= chance):
-                    W /= chance
-                else: 
-                    photon_status = 0
-                    cyl_bins.set_val(str(round(x))+"_"+str(round(y)), 1)
-                    plan_bins.set_val(str(round(z)), 1)
+                    phot.update_weight(phot.get_weight() / chance)
+                else:
+                    phot.update_status()
+                    pos = phot.get_position()
+                    cyl_bins.set_val(str(round(pos[0]/dr))+"_"+str(round(pos[1]/dr)), 1)
+                    plan_bins.set_val(str(round(pos[0]/dr)), 1)
 
     f=open("mc321.out", "w")
     f.write("number of photons = %f\n"% (Nphotons))
@@ -203,7 +220,7 @@ if __name__ == '__main__':
         f.write("%5.5f \t %4.3e \t %4.3e \t %4.3e \n" % (r, Fsph, Fcyl, Fpla))
     f.close()
 
-    imheight = imwidth = 20
+    imheight = imwidth = round(NR/2)
     img = Image.new("L", (2*imwidth, 2*imheight))  # single band 
     newdata = []
     for i in range(-imheight, imheight):
