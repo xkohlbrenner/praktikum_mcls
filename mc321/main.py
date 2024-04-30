@@ -211,11 +211,11 @@ if __name__ == '__main__':
     for ir in range(0,NR):
         #r = sqrt(1.0/3 - (ir+1) + (ir+1)*(ir+1))*dr;
         r = (ir + 0.5)*dr
-        shellvolume = 4.0*pi*r*r*dr; #per spherical shell
+        shellvolume = 4.0*pi*r*r*dr #per spherical shell
         Fsph = Csph[ir]/Nphotons/shellvolume/mua
-        shellvolume = 2.0*pi*r*dr;   #per cm length of cylinder
+        shellvolume = 2.0*pi*r*dr   #per cm length of cylinder
         Fcyl = Ccyl[ir]/Nphotons/shellvolume/mua
-        shellvolume = dr;            #per cm2 area of plane
+        shellvolume = dr            #per cm2 area of plane
         Fpla =Cpla[ir]/Nphotons/shellvolume/mua
         f.write("%5.5f \t %4.3e \t %4.3e \t %4.3e \n" % (r, Fsph, Fcyl, Fpla))
     f.close()
