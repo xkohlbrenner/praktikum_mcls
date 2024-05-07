@@ -334,9 +334,10 @@ if __name__ == '__main__':
             # * radius = radius of uniform beam. */
             #/* Initial position */
             rnd = float(random.random()) #random takes uniformly a number of (0,1]
-            x = radius*math.sqrt(rnd)
-            y = 0
-            z = zs
+            phot.update_positon(radius*math.sqrt(rnd), 0, zs)
+            #x = radius*math.sqrt(rnd)
+            #y = 0
+            #z = zs
             #/* Initial trajectory as cosines */
             ux = 0
             uy = 0
@@ -358,8 +359,9 @@ if __name__ == '__main__':
             #/* avoids rnd = 0 */
             rnd = float(random.random())
             x = radius*math.sqrt(-math.log(rnd))
-            y = 0.0
-            z = 0.0
+            phot.update_positon(x, 0, 0)
+            #y = 0.0
+            #z = 0.0
             #/* Initial trajectory as cosines */
             #/* Due to cylindrical symmetry, radial launch trajectory is
             # * assigned to ux and uz while uy = 0. */
@@ -378,9 +380,10 @@ if __name__ == '__main__':
             #/* ISOTROPIC POINT SOURCE AT POSITION xs,ys,zs */
             #/* Initial position */
             rnd = float(random.random())
-            x = xs
-            y = ys
-            z = zs
+            phot.update_positon(xs, ys, zs)
+            #x = xs
+            #y = ys
+            #z = zs
             #/* Initial trajectory as cosines */
             costheta = 1.0 - 2.0*random.random()
             sintheta = math.sqrt(1.0 - costheta*costheta)
@@ -399,16 +402,15 @@ if __name__ == '__main__':
             print("choose mcflag between 0 to 2\n")
             
 
-        W = 1.0 - rsp  #/* set photon initial weight */
+        phot.set_weight(1.0 - rsp)  #/* set photon initial weight */
         Rsptot += rsp #/* accumulate specular reflectance per photon */
-        photon_status = ALIVE
 
         #/******************************************
         #****** HOP_ESCAPE_SPINCYCLE **************
         #* Propagate one photon until it dies by ESCAPE or ROULETTE. 
         #*******************************************/
 
-        while (photon_status == ALIVE):
+        while phot.get_status():
             #/**** HOP
             # * Take step to new position
             # * s = stepsize
@@ -418,31 +420,36 @@ if __name__ == '__main__':
             s = -math.log(rnd)/mut   #/* Step size.  Note: log() is base e */
 
             #/* Does photon ESCAPE at surface? ... z + s*uz <= 0? */
-            if ((boundaryflag == 1) & (z + s*uz <= 0)):
+            if ((boundaryflag == 1) & (phot.get_position()[2] + s*uz <= 0)):
                 rnd = random.random()
                 #/* Check Fresnel reflectance at surface boundary */
                 rf, uz1 = RFresnel(n1, n2, -uz)
                 if (rnd > rf): 
                     #/* Photon escapes at external angle, uz1 = cos(angle) */
-                    s  = abs(z/uz) #/* calculate stepsize to reach surface */
-                    x += s*ux       #/* partial step to reach surface */
-                    y += s*uy
-                    r = math.sqrt(x*x + y*y)   #/* find radial position r */
+                    s  = abs(phot.get_position()[2]/uz) #/* calculate stepsize to reach surface */
+                    phot.update_positon(s*ux, s*uy, 0)
+                    #x += s*ux       #/* partial step to reach surface */
+                    #y += s*uy
+                    pos = phot.get_position()
+                    r = math.sqrt(pos[0]*pos[0] + pos[1]*pos[1])   #/* find radial position r */
                     ir = round((r/dr) + 1) #/* round to 1 <= ir */
                     ir = min(ir,NR)  #/* ir = NR is overflow bin */
-                    J[ir] += W      #/* increment escaping flux */
-                    photon_status = DEAD
+                    J[ir] += phot.get_weight()      #/* increment escaping flux */
+                    phot.update_dead()
                     
                 else:
-                    z = -(z + s*uz)   #/* Total internal reflection. */
+                    pos = phot.get_position()
+                    phot.update_positon(0, 0, -(pos[2] + s*uz))
+                    #z = -(z + s*uz)   #/* Total internal reflection. */
                     uz = -uz
             else:
-                x += s*ux           #/* Update positions. */
-                y += s*uy
-                z += s*uz
+                phot.update_positon(s*ux, s*uy, s*uz)
+                #x += s*ux           #/* Update positions. */
+                #y += s*uy
+                #z += s*uz
                     
 
-            if (photon_status  == ALIVE):
+            if phot.get_status():
                 #/*********************************************
                 # ****** SPINCYCLE = DROP_SPIN_ROULETTE ******
                 # *********************************************/
@@ -450,13 +457,14 @@ if __name__ == '__main__':
                 #/**** DROP
                 # * Drop photon weight (W) into local bin.
                 # *****/
-                absorb = W*(1 - albedo)       #/* photon weight absorbed at this step */
-                W -= absorb                  #/* decrement WEIGHT by amount absorbed */
+                absorb = phot.get_weight()*(1 - albedo)       #/* photon weight absorbed at this step */
+                phot.update_weight(-absorb)                  #/* decrement WEIGHT by amount absorbed */
                 Atot += absorb               #/* accumulate absorbed photon weight */
                 #/* deposit power in cylindrical coordinates z,r */
-                r  = math.sqrt(x*x + y*y)         #/* current cylindrical radial position */
+                pos = phot.get_position()
+                r  = math.sqrt(pos[0]*pos[0] + pos[1]*pos[1])         #/* current cylindrical radial position */
                 ir = round((r/dr) + 1)        
-                iz = round((abs(z)/dz) + 1)  
+                iz = round((abs(pos[2])/dz) + 1)  
                 ir = min(ir, NR)    #/* round to 1 <= ir, iz */
                 iz = min(iz, NR)    #/* last bin is for overflow */
                 F[iz][ir] += absorb          #/* DROP absorbed weight into bin */
@@ -511,12 +519,13 @@ if __name__ == '__main__':
                 # * its weight increased by factor of 1/CHANCE,
                 # * and 1-CHANCE probability of terminating.
                 # *****/
-                if (W < THRESHOLD):
+                if (phot.get_weight() < THRESHOLD):
                     rnd = random.random()
                     if (rnd <= CHANCE):
-                        W /= CHANCE
+                        phot.set_weight(phot.get_weight() / CHANCE)
+                        #W /= CHANCE
                     else:
-                        photon_status = DEAD
+                        phot.update_dead()
 
             #/**********************************************
             #  **** END of SPINCYCLE = DROP_SPIN_ROULETTE *

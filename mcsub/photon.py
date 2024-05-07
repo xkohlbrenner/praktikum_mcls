@@ -28,15 +28,17 @@ class photon:
     def get_planar_position(self):
         return abs(self.z)
     
+    def set_weight(self, w):
+        self.weight = w
     #update weight of the photon
     def update_weight(self, w):
-        self.weight = w
+        self.weight += w
 
     def get_weight(self):
         return self.weight
 
     #photon dies
-    def update_status(self): 
+    def update_dead(self): 
         self.status = 0
     
     def get_status(self):
