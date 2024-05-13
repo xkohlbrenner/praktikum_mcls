@@ -8,7 +8,8 @@ class photon:
         self.y = 0
         self.z = 0
         self.weight = 1.0
-        self.status = 1
+        self.status = 1        #0 if dead, 1 if alive
+                
 
     #update the postional variables of the photon
     def update_positon(self, ux, uy, uz):
