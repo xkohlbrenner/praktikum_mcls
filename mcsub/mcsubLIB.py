@@ -124,6 +124,7 @@ def launch(queue_photons, environmentGeneral, queue_result, queue_end, number):
             print("choose mcflag between 0 to 2\n")
             
 
+
         phot.set_weight(1.0 - rsp)  # set photon initial weight 
         tempRsptot += rsp # accumulate specular reflectance per photon 
 
