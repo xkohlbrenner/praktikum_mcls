@@ -169,16 +169,17 @@ def launch(queue_photons, environmentGeneral, queue_result, queue_end, number, e
                     #z = -(z + s*uz)   # Total internal reflection. 
                     uz = -uz
             else:
+                photPosOld = phot.get_position()
                 phot.update_positon(s*ux, s*uy, s*uz)   #update Positions
-
+                photPosNew = phot.get_position()
                 #check if boundary over new environment was crossed
-                photPos = phot.get_position()
-                newEnv = envManager.findEnv(photPos[0], photPos[1], photPos[2], name)
-                if newEnv != 0:
-                    mut = newEnv["mua"] + newEnv["mus"]
-                    albedo = newEnv["mus"]/mut
-                    g = newEnv["excitAnisotropy"]
-                    name = newEnv["name"]
+                if not checkSameBin(photPosOld[0], photPosOld[1], photPosNew[0], photPosNew[1], dr, dr):
+                    newEnv = envManager.findEnv(photPosNew[0], photPosNew[1], photPosNew[2], name)
+                    if newEnv != 0:
+                        mut = newEnv["mua"] + newEnv["mus"]
+                        albedo = newEnv["mus"]/mut
+                        g = newEnv["excitAnisotropy"]
+                        name = newEnv["name"]
                 #x += s*ux           # Update positions. 
                 #y += s*uy
                 #z += s*uz
@@ -312,6 +313,8 @@ def sort(queue, processes, escapeFlux, absorbInfo, tempRsptot, Atot):
     return [absorbInfo, escapeFlux, tempRsptot, Atot]
 
 
+def checkSameBin( x1, y1,  x2,  y2,  dx, dy):
+    return (x1/dx == x2/dx and y1/dy == y2/dy)
 #*********************************************
 #  **** END of SPINCYCLE = DROP_SPIN_ROULETTE *
 #  *********************************************
