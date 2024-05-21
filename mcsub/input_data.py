@@ -4,7 +4,7 @@ default = 0        #if set to 1 the default numbers are taken,
 nt  = 1.33          #tissue index of refraction
 Nphotons = 100000    #number of photons
 
-environment = {
+environmentGeneral = {
     "mcflag": 0,            	        #0 = collimated uniform, 1 = Gaussian, 2 = isotropic point
     "radius": 0,                        #radius of beam (1/e width if Gaussian) (if mcflag < 2)
     "tissueRefractive": 1.4,    #refractive index of tissue, former n1
@@ -14,15 +14,31 @@ environment = {
     "xs": 0,                               #used if mcflag = 2, isotropic pt source
     "ys": 0,                               #used if mcflag = 2, isotropic pt source
     "zs": 0,                               #used if mcflag = 2, isotropic pt source
-    "mua": 1,                              #mua: absorption coefficient [cm^-1],
-    "mus": 100,                              #mus: scattering coefficient [cm^-1]
     "boundaryflag": 1,           #boundaryflag = 1 if air/tissue surface, = 0 if infinite medium
     "dr": 0.002,                    #radial bin size [cm]
     "dz": 0.002,                     #depth bin size [cm]
     "NR": 100,                       #number of radial bins
     "NZ": 100,                        #number of depth bins
     "waist": 0.1,                         #1/e radius of Gaussian focus
-    "excitAnisotropy": 0.9,                    #excitation anisotropy [dimensionless]
     "THRESHOLD": 0.0001,                  #used in roulette        
     "CHANCE": 0.1,                        #used in roulette
 }
+
+envDetail = [
+    {
+        "name": "",
+        "mua": 1,                              #mua: absorption coefficient [cm^-1],
+        "mus": 100,                              #mus: scattering coefficient [cm^-1]
+        "excitAnisotropy": 0.9,                    #excitation anisotropy [dimensionless]
+        "formula": "",                           #only needed, if default is 0
+        "default": 1
+    },
+    {
+        "name": "blood",
+        "mua": 230.5427,                              #mua: absorption coefficient [cm^-1],
+        "mus": 93.9850,                              #mus: scattering coefficient [cm^-1]
+        "excitAnisotropy": 0.9000,                    #excitation anisotropy [dimensionless]
+        "formula": "(x-50)*(x-50) + (y-50)*(y-50) <= 5",                           #only needed, if default is 0
+        "default": 0
+    }
+]
