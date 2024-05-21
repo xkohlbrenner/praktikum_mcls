@@ -13,7 +13,7 @@ import manageEnv
 #   Implements an isotropic point source.
 #****
 
-def launch(queue_photons, environmentGeneral, queue_result, queue_end, number):
+def launch(queue_photons, environmentGeneral, queue_result, queue_end, number, envManager):
     while True:
         iphoton = queue_photons.get()
         if iphoton == "DONE":
@@ -29,17 +29,20 @@ def launch(queue_photons, environmentGeneral, queue_result, queue_end, number):
         xs = environmentGeneral["xs"]                #used if mcflag = 2, isotropic pt source
         ys = environmentGeneral["ys"]                #used if mcflag = 2, isotropic pt source
         zs = environmentGeneral["zs"]                #used if mcflag = 2, isotropic pt source
-        mut = environmentGeneral["mua"] + environmentGeneral["mus"]        #mua: absorption coefficient [cm^-1], mus: scattering coefficient [cm^-1]
         boundaryflag = environmentGeneral["boundaryflag"]    #boundaryflag = 1 if air/tissue surface, = 0 if infinite medium
         dr = environmentGeneral["dr"]                        #radial bin size [cm]
         dz = environmentGeneral["dz"]                        #depth bin size [cm]
         NR = environmentGeneral["NR"]                        #number of radial bins
         NZ = environmentGeneral["NZ"]                        #number of depth bins
         waist = environmentGeneral["waist"]                  #1/e radius of Gaussian focus
-        g = environmentGeneral["excitAnisotropy"]                          #excitation anisotropy [dimensionless]
         THRESHOLD = environmentGeneral["THRESHOLD"]          #used in roulette        
         CHANCE = environmentGeneral["CHANCE"]                #used in roulette
-        albedo = environmentGeneral["mus"]/(environmentGeneral["mua"]+environmentGeneral["mus"])
+    	
+        envStart = envManager.envDefault.get_variables()
+        mut = envStart["mua"] + envStart["mus"]
+        albedo = envStart["mus"]/mut
+        g = envStart["excitAnisotropy"]
+        name = envStart["name"]
 
         absorbInfo = [] #matrix of fluence rate [cm^-2] = [W/cm2 per W], former F
         escapeFlux = []  #vector of escaping flux [cm^-2] versus radial position, former J
@@ -166,7 +169,16 @@ def launch(queue_photons, environmentGeneral, queue_result, queue_end, number):
                     #z = -(z + s*uz)   # Total internal reflection. 
                     uz = -uz
             else:
-                phot.update_positon(s*ux, s*uy, s*uz)
+                phot.update_positon(s*ux, s*uy, s*uz)   #update Positions
+
+                #check if boundary over new environment was crossed
+                photPos = phot.get_position()
+                newEnv = envManager.findEnv(photPos[0], photPos[1], photPos[2], name)
+                if newEnv != 0:
+                    mut = newEnv["mua"] + newEnv["mus"]
+                    albedo = newEnv["mus"]/mut
+                    g = newEnv["excitAnisotropy"]
+                    name = newEnv["name"]
                 #x += s*ux           # Update positions. 
                 #y += s*uy
                 #z += s*uz
@@ -255,7 +267,7 @@ def launch(queue_photons, environmentGeneral, queue_result, queue_end, number):
         # [[(1D-number,absorbValue), ...], [(number, weight), ...], value, value]
         queue_result.put([absorbInfo, escapeFlux, tempRsptot, Atot])
 
-def launcher_start(processes, environmentGeneral, queue_result, queue_photons, queue_end):
+def launcher_start(processes, environmentGeneral, queue_result, queue_photons, queue_end, envManager):
     #*** LAUNCH 
     #   Initialize photon position and trajectory.
     #   Implements an isotropic point source.
@@ -263,7 +275,7 @@ def launcher_start(processes, environmentGeneral, queue_result, queue_photons, q
     all_launcher_procs = []
     for i in range(0, processes):
         print("launcher " + str(i)+ " started")
-        launcher_p = Process(target=launch, args=((queue_photons), (environmentGeneral), (queue_result),(queue_end),(i),))
+        launcher_p = Process(target=launch, args=((queue_photons), (environmentGeneral), (queue_result),(queue_end),(i), (envManager),))
         launcher_p.daemon = True
         launcher_p.start()
 
@@ -427,6 +439,7 @@ if __name__ == '__main__':
 
     environmentGeneral = input_data.environmentGeneral
     envManager = manageEnv.manageEnv()
+
     for env in input_data.envDetail:
         envManager.addEnvironment(env["name"], env["mua"], env["mus"], env["excitAnisotropy"], env["formula"], env["default"])
     #**********************
@@ -502,7 +515,7 @@ if __name__ == '__main__':
     # * Launch N photons, initializing each one before progation.
     #============================================================
 
-    launcher_procs = launcher_start(processes, environmentGeneral, queue_result, queue_photons, queue_end)
+    launcher_procs = launcher_start(processes, environmentGeneral, queue_result, queue_photons, queue_end, envManager)
     writer(Nphotons, processes, queue_photons)
     return_dict = sort(queue_result, processes, escapeFlux, absorbInfo, tempRsptot, Atot)
     for idx, a_launcher_proc in enumerate(launcher_procs):

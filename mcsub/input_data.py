@@ -2,7 +2,7 @@ default = 0        #if set to 1 the default numbers are taken,
                     #use this, if you're provided data throws Error
 
 nt  = 1.33          #tissue index of refraction
-Nphotons = 100000    #number of photons
+Nphotons = 1000    #number of photons
 
 environmentGeneral = {
     "mcflag": 0,            	        #0 = collimated uniform, 1 = Gaussian, 2 = isotropic point
@@ -22,11 +22,14 @@ environmentGeneral = {
     "waist": 0.1,                         #1/e radius of Gaussian focus
     "THRESHOLD": 0.0001,                  #used in roulette        
     "CHANCE": 0.1,                        #used in roulette
+    "mua": 1,                              #mua: absorption coefficient [cm^-1],
+    "mus": 100,                              #mus: scattering coefficient [cm^-1]
+    "excitAnisotropy": 0.9,
 }
 
 envDetail = [
     {
-        "name": "",
+        "name": "standard",
         "mua": 1,                              #mua: absorption coefficient [cm^-1],
         "mus": 100,                              #mus: scattering coefficient [cm^-1]
         "excitAnisotropy": 0.9,                    #excitation anisotropy [dimensionless]
@@ -38,7 +41,7 @@ envDetail = [
         "mua": 230.5427,                              #mua: absorption coefficient [cm^-1],
         "mus": 93.9850,                              #mus: scattering coefficient [cm^-1]
         "excitAnisotropy": 0.9000,                    #excitation anisotropy [dimensionless]
-        "formula": "(x-50)*(x-50) + (y-50)*(y-50) <= 5",                           #only needed, if default is 0
+        "formula": "(x-50)*(x-50) + (y-50)*(y-50) <= 10",                           #only needed, if default is 0
         "default": 0
     }
 ]

@@ -14,8 +14,15 @@ class manageEnv:
                 raise ValueError("Multiple default environments defined")
             self.envDefault = environment(name, mua, mus, excitAnisotropy, formula, default)
     
-    def findEnv(self, ix, iy, iz):
+    def findEnv(self, ix, iy, iz, name):
+        foundName = self.envDefault.name
         for env in self.envArray:
             if env.in_environment(ix, iy, iz):
-                return env.get_variables()
-        return self.envDefault.get_variables()
+                foundName = env.name
+                if foundName != name:
+                    return env.get_variables()
+                return 0
+        if foundName != name:
+            return self.envDefault.get_variables()
+        return 0
+    

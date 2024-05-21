@@ -20,4 +20,4 @@ class environment:
         return self.formula.subs({x: ix, y: iy, z: iz})
     
     def get_variables(self):
-        return {"mua": self.mua, "mus": self.mus, "excitAnisotropy": self.excitAnisotropy}
+        return {"name": self.name, "mua": self.mua, "mus": self.mus, "excitAnisotropy": self.excitAnisotropy}
