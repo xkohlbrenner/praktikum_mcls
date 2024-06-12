@@ -6,6 +6,7 @@ import numpy as np
 import photon
 import input_data
 import manageEnv
+from octTree import OctTree as OT
 
 
 #*** LAUNCH 
@@ -13,7 +14,7 @@ import manageEnv
 #   Implements an isotropic point source.
 #****
 
-def launch(queue_photons, environmentGeneral, queue_result, queue_end, number, envManager):
+def launch(queue_photons, environmentGeneral, queue_result, queue_end, number, octT):
     while True:
         iphoton = queue_photons.get()
         if iphoton == "DONE":
@@ -38,11 +39,7 @@ def launch(queue_photons, environmentGeneral, queue_result, queue_end, number, e
         THRESHOLD = environmentGeneral["THRESHOLD"]          #used in roulette        
         CHANCE = environmentGeneral["CHANCE"]                #used in roulette
     	
-        envStart = envManager.envDefault.get_variables()
-        mut = envStart["mua"] + envStart["mus"]
-        albedo = envStart["mus"]/mut
-        g = envStart["excitAnisotropy"]
-        name = envStart["name"]
+
 
         absorbInfo = [] #matrix of fluence rate [cm^-2] = [W/cm2 per W], former F
         escapeFlux = []  #vector of escaping flux [cm^-2] versus radial position, former J
@@ -125,8 +122,12 @@ def launch(queue_photons, environmentGeneral, queue_result, queue_end, number, e
             rsp = 0.0
         else: 
             print("choose mcflag between 0 to 2\n")
-            
-
+        
+        photpos = phot.get_position()
+        envStart = octT.get_env(photpos[0], photpos[1], photpos[2])
+        mut = envStart["mua"] + envStart["mus"]
+        albedo = envStart["mus"]/mut
+        g = envStart["excitAnisotropy"]
 
         phot.set_weight(1.0 - rsp)  # set photon initial weight 
         tempRsptot += rsp # accumulate specular reflectance per photon 
@@ -174,12 +175,10 @@ def launch(queue_photons, environmentGeneral, queue_result, queue_end, number, e
                 photPosNew = phot.get_position()
                 #check if boundary over new environment was crossed
                 if not checkSameBin(photPosOld[0], photPosOld[1], photPosNew[0], photPosNew[1], dr, dr):
-                    newEnv = envManager.findEnv(photPosNew[0], photPosNew[1], photPosNew[2], name)
-                    if newEnv != 0:
-                        mut = newEnv["mua"] + newEnv["mus"]
-                        albedo = newEnv["mus"]/mut
-                        g = newEnv["excitAnisotropy"]
-                        name = newEnv["name"]
+                    newEnv = octT.get_env(photPosNew[0], photPosNew[1], photPosNew[2])
+                    mut = newEnv["mua"] + newEnv["mus"]
+                    albedo = newEnv["mus"]/mut
+                    g = newEnv["excitAnisotropy"]
                 #x += s*ux           # Update positions. 
                 #y += s*uy
                 #z += s*uz
@@ -268,7 +267,7 @@ def launch(queue_photons, environmentGeneral, queue_result, queue_end, number, e
         # [[(1D-number,absorbValue), ...], [(number, weight), ...], value, value]
         queue_result.put([absorbInfo, escapeFlux, tempRsptot, Atot])
 
-def launcher_start(processes, environmentGeneral, queue_result, queue_photons, queue_end, envManager):
+def launcher_start(processes, environmentGeneral, queue_result, queue_photons, queue_end, octTree):
     #*** LAUNCH 
     #   Initialize photon position and trajectory.
     #   Implements an isotropic point source.
@@ -276,7 +275,7 @@ def launcher_start(processes, environmentGeneral, queue_result, queue_photons, q
     all_launcher_procs = []
     for i in range(0, processes):
         print("launcher " + str(i)+ " started")
-        launcher_p = Process(target=launch, args=((queue_photons), (environmentGeneral), (queue_result),(queue_end),(i), (envManager),))
+        launcher_p = Process(target=launch, args=((queue_photons), (environmentGeneral), (queue_result),(queue_end),(i), (octTree),))
         launcher_p.daemon = True
         launcher_p.start()
 
@@ -435,8 +434,6 @@ def SaveFile(Nfile,  J,  F,  S,  A,  E, environmentGeneral, Nphotons):
     file.close()
 
 
-
-
 if __name__ == '__main__':
     startTime = time.time()
 
@@ -509,6 +506,22 @@ if __name__ == '__main__':
     tempRsptot = 0.0 # accumulate specular reflectance per photon 
     Atot   = 0.0 # accumulate absorbed photon weight 
     processes = cpu_count()
+
+    octTree = OT()
+    pixel = int(environmentGeneral["bins"]/2)
+    envList = []
+    createEnvListTimeStart = time.time()
+    for x in range(-pixel, pixel):
+        for y in range(-pixel, pixel):
+            for z in range(-pixel, pixel):
+                envList.append(envManager.findEnv(x+0.5, y+0.5, z+0.5))
+    createEnvListTimeEnd = time.time()
+    envListTime = createEnvListTimeEnd-createEnvListTimeStart
+
+    octTree.createTree(-pixel, pixel, -pixel, pixel, -pixel, pixel, math.log(pixel*2, 2), envList)
+    ocTreeTimeEnd = time.time()
+    ocTreeTime = ocTreeTimeEnd-createEnvListTimeEnd
+
     print(processes)
     queue_result = Queue()
     queue_photons = Queue()
@@ -518,7 +531,7 @@ if __name__ == '__main__':
     # * Launch N photons, initializing each one before progation.
     #============================================================
 
-    launcher_procs = launcher_start(processes, environmentGeneral, queue_result, queue_photons, queue_end, envManager)
+    launcher_procs = launcher_start(processes, environmentGeneral, queue_result, queue_photons, queue_end, octTree)
     writer(Nphotons, processes, queue_photons)
     return_dict = sort(queue_result, processes, escapeFlux, absorbInfo, tempRsptot, Atot)
     for idx, a_launcher_proc in enumerate(launcher_procs):
@@ -570,4 +583,6 @@ if __name__ == '__main__':
     print("total    = %5.6f\n" % SAE)
     SaveFile(1, escapeFlux, absorbInfo, S, A, E, environmentGeneral, Nphotons)
     endTime = time.time()
+    print(envListTime)
+    print(ocTreeTime)
     print(endTime - startTime)
