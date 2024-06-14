@@ -275,7 +275,7 @@ def launcher_start(processes, environmentGeneral, queue_result, queue_photons, q
     all_launcher_procs = []
     for i in range(0, processes):
         print("launcher " + str(i)+ " started")
-        launcher_p = Process(target=launch, args=((queue_photons), (environmentGeneral), (queue_result),(queue_end),(i), (octTree),))
+        launcher_p = Process(target=launch, args=(queue_photons, environmentGeneral, queue_result, queue_end, i, octTree,))
         launcher_p.daemon = True
         launcher_p.start()
 
@@ -439,9 +439,9 @@ if __name__ == '__main__':
 
     environmentGeneral = input_data.environmentGeneral
     envManager = manageEnv.manageEnv()
-
+    print(input_data.envDetail[1]["space"]["x"][0])
     for env in input_data.envDetail:
-        envManager.addEnvironment(env["name"], env["mua"], env["mus"], env["excitAnisotropy"], env["formula"], env["default"])
+        envManager.addEnvironment(env["name"], env["mua"], env["mus"], env["excitAnisotropy"], env["formula"], env["space"], env["default"])
     #**********************
     #* MAIN PROGRAM
     #*********************
@@ -508,17 +508,22 @@ if __name__ == '__main__':
     processes = cpu_count()
 
     octTree = OT()
-    pixel = int(environmentGeneral["bins"]/2)
-    envList = []
+    pixel = environmentGeneral["bins"]
+    
     createEnvListTimeStart = time.time()
-    for x in range(-pixel, pixel):
-        for y in range(-pixel, pixel):
-            for z in range(-pixel, pixel):
-                envList.append(envManager.findEnv(x+0.5, y+0.5, z+0.5))
+
+    envList = [envManager.get_default_variables()]*(pixel*pixel*pixel)
+    print(len(envList))
+    envList = envManager.assign_env(envList, pixel)
+        
+        #for x in range(-pixel, pixel):
+        #    for y in range(-pixel, pixel):
+        #        for z in range(-pixel, pixel):
+        #            envList.append(envManager.find_env(x+0.5, y+0.5, z+0.5))
     createEnvListTimeEnd = time.time()
     envListTime = createEnvListTimeEnd-createEnvListTimeStart
-
-    octTree.createTree(-pixel, pixel, -pixel, pixel, -pixel, pixel, math.log(pixel*2, 2), envList)
+    pixelhalf = pixel/2
+    octTree.createTree(-pixelhalf, pixelhalf, -pixelhalf, pixelhalf, -pixelhalf, pixelhalf, pixelhalf, math.log(pixel, 2), envList)
     ocTreeTimeEnd = time.time()
     ocTreeTime = ocTreeTimeEnd-createEnvListTimeEnd
 
@@ -531,7 +536,10 @@ if __name__ == '__main__':
     # * Launch N photons, initializing each one before progation.
     #============================================================
 
+    launcherTimeStart = time.time()
     launcher_procs = launcher_start(processes, environmentGeneral, queue_result, queue_photons, queue_end, octTree)
+    launcherTimeEnd = time.time()
+    launcherTime = launcherTimeEnd - launcherTimeStart
     writer(Nphotons, processes, queue_photons)
     return_dict = sort(queue_result, processes, escapeFlux, absorbInfo, tempRsptot, Atot)
     for idx, a_launcher_proc in enumerate(launcher_procs):
@@ -583,6 +591,7 @@ if __name__ == '__main__':
     print("total    = %5.6f\n" % SAE)
     SaveFile(1, escapeFlux, absorbInfo, S, A, E, environmentGeneral, Nphotons)
     endTime = time.time()
-    print(envListTime)
-    print(ocTreeTime)
-    print(endTime - startTime)
+    print("Time to create env list (sec): " + str(envListTime))
+    print("Time to create Octree (sec): " + str(ocTreeTime))
+    print("Time to start all launcher (sec): " + str(launcherTime))
+    print("Over all time (sec): " + str(endTime - startTime))

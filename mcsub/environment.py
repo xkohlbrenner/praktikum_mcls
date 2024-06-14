@@ -2,7 +2,7 @@ import sympy as sp
 
 class environment:
 
-    def __init__(self, name, mua, mus, excitAnisotropy, formula, default):
+    def __init__(self, name, mua, mus, excitAnisotropy, formula, space, default):
         self.name = name
         self.mua = mua
         self.mus = mus
@@ -10,6 +10,7 @@ class environment:
         self.default = default                      #1, if default env, else 0
         if self.default == 0:
             self.formula = sp.sympify(formula)          #formula to describe the environment, input has to be a string
+            self.space = space
 
     
 

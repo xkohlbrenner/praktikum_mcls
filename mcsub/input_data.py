@@ -35,6 +35,7 @@ envDetail = [
         "mus": 100,                              #mus: scattering coefficient [cm^-1]
         "excitAnisotropy": 0.9,                    #excitation anisotropy [dimensionless]
         "formula": "",                           #only needed, if default is 0
+        "space": "",
         "default": 1
     },
     {
@@ -42,7 +43,8 @@ envDetail = [
         "mua": 230.5427,                              #mua: absorption coefficient [cm^-1],
         "mus": 93.9850,                              #mus: scattering coefficient [cm^-1]
         "excitAnisotropy": 0.9000,                    #excitation anisotropy [dimensionless]
-        "formula": "(x-20)*(x-20) + (y-20)*(y-20) <= 10",                           #only needed, if default is 0
+        "formula": "(x-20)*(x-20) + (y-20)*(y-20) + (z-20)*(z-20) <= 10",                           #only needed, if default is 0
+        "space": {"x": [10, 30], "y": [10, 30], "z": [10, 30]},
         "default": 0
     }
 ]

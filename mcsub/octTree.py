@@ -6,21 +6,24 @@ class OctTree:
         self.Tree= []
 
     #creates octan tree and applies the environment to all nodes at the lowest area
-    def createTree(self, x1, x2, y1, y2, z1, z2, depth, envList):
+    def createTree(self, x1, x2, y1, y2, z1, z2, pixel, depth, envList):
         tempbranch = Node(x1, x2, y1, y2, z1, z2)
         self.Tree.append(tempbranch)
         if depth == 0:
-            tempbranch.set_env(envList[int(abs(x1)*64*64+abs(y1)*64+abs(z1)*64)])
+            #print(str(x1) + " " + str(y1) + " " + str(z1))
+            #print(int(abs(x1)*pixel*pixel+abs(y1)*pixel+abs(z1)))
+            half = int(pixel/2)
+            tempbranch.set_env(envList[int((x1+half)*pixel*pixel+(y1+half)*pixel+(z1+half))])
         else:
             depth -= 1
-            c1 = self.createTree(x1, x2-(x2-x1)/2, y1, y2-(y2-y1)/2, z1, z2-(z2-z1)/2, depth, envList)
-            c2 = self.createTree(x1, x2-(x2-x1)/2, y1, y2-(y2-y1)/2, z2-(z2-z1)/2, z2, depth, envList)
-            c3 = self.createTree(x1, x2-(x2-x1)/2, y2-(y2-y1)/2, y2, z1, z2-(z2-z1)/2, depth, envList)
-            c4 = self.createTree(x1, x2-(x2-x1)/2, y2-(y2-y1)/2, y2, z2-(z2-z1)/2, z2, depth, envList)
-            c5 = self.createTree(x2-(x2-x1)/2, x2, y1, y2-(y2-y1)/2, z1, z2-(z2-z1)/2, depth, envList)
-            c6 = self.createTree(x2-(x2-x1)/2, x2, y1, y2-(y2-y1)/2, z2-(z2-z1)/2, z2, depth, envList)
-            c7 = self.createTree(x2-(x2-x1)/2, x2, y2-(y2-y1)/2, y2, z1, z2-(z2-z1)/2, depth, envList)
-            c8 = self.createTree(x2-(x2-x1)/2, x2, y2-(y2-y1)/2, y2, z2-(z2-z1)/2, z2, depth, envList)
+            c1 = self.createTree(x1, x2-(x2-x1)/2, y1, y2-(y2-y1)/2, z1, z2-(z2-z1)/2, pixel, depth, envList)
+            c2 = self.createTree(x1, x2-(x2-x1)/2, y1, y2-(y2-y1)/2, z2-(z2-z1)/2, z2, pixel, depth, envList)
+            c3 = self.createTree(x1, x2-(x2-x1)/2, y2-(y2-y1)/2, y2, z1, z2-(z2-z1)/2, pixel, depth, envList)
+            c4 = self.createTree(x1, x2-(x2-x1)/2, y2-(y2-y1)/2, y2, z2-(z2-z1)/2, z2, pixel, depth, envList)
+            c5 = self.createTree(x2-(x2-x1)/2, x2, y1, y2-(y2-y1)/2, z1, z2-(z2-z1)/2, pixel, depth, envList)
+            c6 = self.createTree(x2-(x2-x1)/2, x2, y1, y2-(y2-y1)/2, z2-(z2-z1)/2, z2, pixel, depth, envList)
+            c7 = self.createTree(x2-(x2-x1)/2, x2, y2-(y2-y1)/2, y2, z1, z2-(z2-z1)/2, pixel, depth, envList)
+            c8 = self.createTree(x2-(x2-x1)/2, x2, y2-(y2-y1)/2, y2, z2-(z2-z1)/2, z2, pixel, depth, envList)
             tempbranch.set_child(c1)
             tempbranch.set_child(c2)
             tempbranch.set_child(c3)
