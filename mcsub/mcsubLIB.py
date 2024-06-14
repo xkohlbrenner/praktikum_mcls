@@ -2,7 +2,7 @@ import math
 import random
 import numpy as np
 import photon
-
+import time
 
 #**********************************************************
 #mcsubLIB.c
@@ -154,6 +154,7 @@ def SaveFile(Nfile,  J,  F,  S,  A,  E,
     file.close()
 
 if __name__ == '__main__':
+    timeStart = time.time()
     #/**********************
     # * MAIN PROGRAM
     # *********************/
@@ -206,7 +207,8 @@ if __name__ == '__main__':
     Nsteps = math.log(THRESH)/math.log(albedo)
     tperstep = 249e-9
     t = 30
-    Nphotons = round(t/(tperstep*Nsteps))
+    #Nphotons = round(t/(tperstep*Nsteps))
+    Nphotons = 100000
     print("Nphotons = %5.4e\n"% Nphotons)
 
 
@@ -318,6 +320,7 @@ if __name__ == '__main__':
     #======================= RUN N photons =====================
     # * Launch N photons, initializing each one before progation.
     #============================================================*/
+    timeLaunchStart = time.time()
     for iphoton in range(0, Nphotons): 
         #/**** LAUNCH 
         #   Initialize photon position and trajectory.
@@ -531,7 +534,7 @@ if __name__ == '__main__':
             #  **** END of SPINCYCLE = DROP_SPIN_ROULETTE *
             #  **********************************************/
 
-        
+    timeLaunchEnd = time.time()
     #/******************************************
     # ****** END of HOP_ESCAPE_SPINCYCLE ******
     # ****** when photon_status == DEAD) ******
@@ -568,3 +571,6 @@ if __name__ == '__main__':
     print("total    = %5.6f\n" % SAE)
     
     SaveFile(1, J, F, S, A, E, mua, mus, g, n1, n2, mcflag, radius, waist, xs, ys, zs, NR, NZ, dr,dz, Nphotons)
+    timeEnd = time.time()
+    print("Launch time (sec): " + str(timeLaunchEnd-timeLaunchStart))
+    print("Total time (sec): " + str(timeEnd-timeStart))
