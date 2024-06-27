@@ -2,7 +2,7 @@ default = 0        #if set to 1 the default numbers are taken,
                     #use this, if you're provided data throws Error
 
 nt  = 1.33          #tissue index of refraction
-Nphotons = 100000    #number of photons
+Nphotons = 1000    #number of photons
 
 environmentGeneral = {
     "mcflag": 0,            	        #0 = collimated uniform, 1 = Gaussian, 2 = isotropic point
@@ -15,11 +15,11 @@ environmentGeneral = {
     "ys": 0,                               #used if mcflag = 2, isotropic pt source
     "zs": 0,                               #used if mcflag = 2, isotropic pt source
     "boundaryflag": 1,           #boundaryflag = 1 if air/tissue surface, = 0 if infinite medium
-    "dr": 0.002,                    #radial bin size [cm]
-    "dz": 0.002,                     #depth bin size [cm]
-    "NR": 128,                       #number of radial bins
-    "NZ": 128,                        #number of depth bins
-    "bins": 128,
+    "radialSize": 3,                #radial size in [cm]
+    "depthSize": 3,                 #depth size in [cm]
+    "NR": 64,                       #number of radial bins
+    "NZ": 64,                        #number of depth bins
+    "bins": 64,
     "waist": 0.1,                         #1/e radius of Gaussian focus
     "THRESHOLD": 0.0001,                  #used in roulette        
     "CHANCE": 0.1,                        #used in roulette
@@ -34,8 +34,8 @@ envDetail = [
         "mua": 1,                              #mua: absorption coefficient [cm^-1],
         "mus": 100,                              #mus: scattering coefficient [cm^-1]
         "excitAnisotropy": 0.9,                    #excitation anisotropy [dimensionless]
-        "formula": "",                           #only needed, if default is 0
-        "space": "",
+        "height": "",                           #only needed, if default is 0
+        "radius": "",
         "default": 1
     },
     {
@@ -43,8 +43,8 @@ envDetail = [
         "mua": 230.5427,                              #mua: absorption coefficient [cm^-1],
         "mus": 93.9850,                              #mus: scattering coefficient [cm^-1]
         "excitAnisotropy": 0.9000,                    #excitation anisotropy [dimensionless]
-        "formula": "(x-20)*(x-20) + (y-20)*(y-20) + (z-20)*(z-20) <= 10",                           #only needed, if default is 0
-        "space": {"x": [10, 30], "y": [10, 30], "z": [10, 30]},
+        "height": [1, 2],                           #in [cm]
+        "radius": 1,                                #in [cm]
         "default": 0
     }
 ]

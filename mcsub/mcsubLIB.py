@@ -1,3 +1,9 @@
+#refractive missing
+#extra processes for tree managment
+
+
+
+
 import math
 import random
 import time
@@ -6,7 +12,7 @@ import numpy as np
 import photon
 import input_data
 import manageEnv
-from octTree import OctTree as OT
+from quadTree import QuadTree
 
 
 #*** LAUNCH 
@@ -14,7 +20,7 @@ from octTree import OctTree as OT
 #   Implements an isotropic point source.
 #****
 
-def launch(queue_photons, environmentGeneral, queue_result, queue_end, number, octT):
+def launch(queue_photons, environmentGeneral, queue_result, number, quadT):
     while True:
         iphoton = queue_photons.get()
         if iphoton == "DONE":
@@ -25,14 +31,16 @@ def launch(queue_photons, environmentGeneral, queue_result, queue_end, number, o
         radius = environmentGeneral["radius"]        #radius of beam (1/e width if Gaussian) (if mcflag < 2)
         tissueRefractive = environmentGeneral["tissueRefractive"]    #refractive index of tissue, former tissueRefractive
         tissueExtMedium = environmentGeneral["tissueExtMedium"]      #refractive index of external medium, former tissueExtMedium
-        zfocus = environmentGeneral["zfocus"]        #depth of focus (if Gaussian (if mcflag = 1)
+        zfocus = environmentGeneral["zfocus"]                       #depth of focus (if Gaussian (if mcflag = 1)
         PI = 3.1415926
         xs = environmentGeneral["xs"]                #used if mcflag = 2, isotropic pt source
         ys = environmentGeneral["ys"]                #used if mcflag = 2, isotropic pt source
         zs = environmentGeneral["zs"]                #used if mcflag = 2, isotropic pt source
         boundaryflag = environmentGeneral["boundaryflag"]    #boundaryflag = 1 if air/tissue surface, = 0 if infinite medium
-        dr = environmentGeneral["dr"]                        #radial bin size [cm]
-        dz = environmentGeneral["dz"]                        #depth bin size [cm]
+        dr = environmentGeneral["radialSize"]/environmentGeneral["NR"] #radial bin size [cm]
+        dz = environmentGeneral["depthSize"]/environmentGeneral["NZ"] #depth bin size [cm]
+        #dr = environmentGeneral["dr"]                        #radial bin size [cm]
+        #dz = environmentGeneral["dz"]                        #depth bin size [cm]
         NR = environmentGeneral["NR"]                        #number of radial bins
         NZ = environmentGeneral["NZ"]                        #number of depth bins
         waist = environmentGeneral["waist"]                  #1/e radius of Gaussian focus
@@ -55,7 +63,7 @@ def launch(queue_photons, environmentGeneral, queue_result, queue_end, number, o
             # * assigned to x while y = 0. 
             # * radius = radius of uniform beam. 
             # Initial position 
-            rnd = float(random.random()) #random takes uniformly a number of (0,1]
+            rnd = float(1-random.random()) #random takes uniformly a number of (0,1]
             phot.update_positon(radius*math.sqrt(rnd), 0, zs)
             #x = radius*math.sqrt(rnd)
             #y = 0
@@ -79,7 +87,7 @@ def launch(queue_photons, environmentGeneral, queue_result, queue_end, number, o
             # * zfocus = depth of focal point. 
             # Initial position 
             # avoids rnd = 0 
-            rnd = float(random.random())
+            rnd = float(1-random.random())
             x = radius*math.sqrt(-math.log(rnd))
             phot.update_positon(x, 0, 0)
             #y = 0.0
@@ -101,15 +109,14 @@ def launch(queue_photons, environmentGeneral, queue_result, queue_end, number, o
         elif  (mcflag == 2):
             # ISOTROPIC POINT SOURCE AT POSITION xs,ys,zs 
             # Initial position 
-            rnd = float(random.random())
             phot.update_positon(xs, ys, zs)
             #x = xs
             #y = ys
             #z = zs
             # Initial trajectory as cosines 
-            costheta = 1.0 - 2.0*random.random()
+            costheta = 1.0 - 2.0*(1-random.random())
             sintheta = math.sqrt(1.0 - costheta*costheta)
-            psi = 2.0*PI*random.random()
+            psi = 2.0*PI*(1-random.random())
             cospsi = math.cos(psi)
             if (psi < PI):
                 sinpsi = math.sqrt(1.0 - cospsi*cospsi) 
@@ -124,7 +131,7 @@ def launch(queue_photons, environmentGeneral, queue_result, queue_end, number, o
             print("choose mcflag between 0 to 2\n")
         
         photpos = phot.get_position()
-        envStart = octT.get_env(photpos[0], photpos[1], photpos[2])
+        envStart = quadT.get_env(math.sqrt(photpos[0]*photpos[0] + photpos[1]*photpos[1]), photpos[2])
         mut = envStart["mua"] + envStart["mus"]
         albedo = envStart["mus"]/mut
         g = envStart["excitAnisotropy"]
@@ -143,12 +150,11 @@ def launch(queue_photons, environmentGeneral, queue_result, queue_end, number, o
             # * s = stepsize
             # * ux, uy, uz are cosines of current photon trajectory
             # ****
-            rnd = random.random()   # avoids rnd = 0 
+            rnd = 1-random.random()   # avoids rnd = 0 
             s = -math.log(rnd)/mut   # Step size.  Note: log() is base e 
 
             # Does photon ESCAPE at surface? ... z + s*uz <= 0? 
             if ((boundaryflag == 1) & (phot.get_position()[2] + s*uz <= 0)):
-                rnd = random.random()
                 # Check Fresnel reflectance at surface boundary 
                 rf, uz1 = RFresnel(tissueRefractive, tissueExtMedium, -uz)
                 if (rnd > rf): 
@@ -173,9 +179,13 @@ def launch(queue_photons, environmentGeneral, queue_result, queue_end, number, o
                 photPosOld = phot.get_position()
                 phot.update_positon(s*ux, s*uy, s*uz)   #update Positions
                 photPosNew = phot.get_position()
+                rOld = math.sqrt(photPosOld[0]*photPosOld[0] + photPosOld[1]*photPosOld[1])
+                hOld = photPosOld[2]
+                rNew = math.sqrt(photPosNew[0]*photPosNew[0] + photPosNew[1]*photPosNew[1])
+                hNew = photPosNew[2]
                 #check if boundary over new environment was crossed
-                if not checkSameBin(photPosOld[0], photPosOld[1], photPosNew[0], photPosNew[1], dr, dr):
-                    newEnv = octT.get_env(photPosNew[0], photPosNew[1], photPosNew[2])
+                if not checkSameBin(rOld, hOld, rNew, hNew, dr, dz):
+                    newEnv = quadT.get_env(rNew, hNew)
                     mut = newEnv["mua"] + newEnv["mus"]
                     albedo = newEnv["mus"]/mut
                     g = newEnv["excitAnisotropy"]
@@ -211,18 +221,18 @@ def launch(queue_photons, environmentGeneral, queue_result, queue_end, number, o
                 # * Convert theta and psi into cosines ux, uy, uz. 
                 # ****
                 # Sample for costheta 
-                rnd = random.random()
+                rndCos = 1-random.random()
                 if (g == 0.0):
-                    costheta = 2.0*rnd - 1.0
+                    costheta = 2.0*rndCos - 1.0
                 elif (g == 1.0):
                     costheta = 1.0
                 else:
-                    temp = (1.0 - g*g)/(1.0 - g + 2*g*rnd)
+                    temp = (1.0 - g*g)/(1.0 - g + 2*g*rndCos)
                     costheta = (1.0 + g*g - temp*temp)/(2.0*g)
                 sintheta = math.sqrt(1.0 - costheta*costheta)	#sqrt faster than sin()
 
                 # Sample psi. 
-                psi = 2.0*PI*random.random()
+                psi = 2.0*PI*(1-random.random())
                 cospsi = math.cos(psi)
                 if (psi < PI):
                     sinpsi = math.sqrt(1.0 - cospsi*cospsi)	#sqrt faster 
@@ -255,7 +265,7 @@ def launch(queue_photons, environmentGeneral, queue_result, queue_end, number, o
                 # * and 1-CHANCE probability of terminating.
                 # ****
                 if (phot.get_weight() < THRESHOLD):
-                    rnd = random.random()
+                    rnd = 1-random.random()
                     if (rnd <= CHANCE):
                         phot.set_weight(phot.get_weight() / CHANCE)
                         #W /= CHANCE
@@ -267,21 +277,7 @@ def launch(queue_photons, environmentGeneral, queue_result, queue_end, number, o
         # [[(1D-number,absorbValue), ...], [(number, weight), ...], value, value]
         queue_result.put([absorbInfo, escapeFlux, tempRsptot, Atot])
 
-def launcher_start(processes, environmentGeneral, queue_result, queue_photons, queue_end, octTree):
-    #*** LAUNCH 
-    #   Initialize photon position and trajectory.
-    #   Implements an isotropic point source.
-    #***   
-    all_launcher_procs = []
-    for i in range(0, processes):
-        print("launcher " + str(i)+ " started")
-        launcher_p = Process(target=launch, args=(queue_photons, environmentGeneral, queue_result, queue_end, i, octTree,))
-        launcher_p.daemon = True
-        launcher_p.start()
 
-        all_launcher_procs.append(launcher_p)
-
-    return all_launcher_procs
 
 def writer(count, num_of_reader_procs, queue):
     """Write integers into the queue.  A reader_proc() will read them from the queue"""
@@ -374,8 +370,8 @@ def SaveFile(Nfile,  J,  F,  S,  A,  E, environmentGeneral, Nphotons):
     zs = environmentGeneral["zs"]                #used if mcflag = 2, isotropic pt source
     mut = environmentGeneral["mua"] + environmentGeneral["mus"]        #mua: absorption coefficient [cm^-1], mus: scattering coefficient [cm^-1]
     boundaryflag = environmentGeneral["boundaryflag"]    #boundaryflag = 1 if air/tissue surface, = 0 if infinite medium
-    dr = environmentGeneral["dr"]                        #radial bin size [cm]
-    dz = environmentGeneral["dz"]                        #depth bin size [cm]
+    dr = environmentGeneral["radialSize"]/environmentGeneral["NR"] #radial bin size [cm]
+    dz = environmentGeneral["depthSize"]/environmentGeneral["NZ"] #depth bin size [cm]
     NR = environmentGeneral["NR"]                        #number of radial bins
     NZ = environmentGeneral["NZ"]                        #number of depth bins
     waist = environmentGeneral["waist"]                  #1/e radius of Gaussian focus
@@ -439,9 +435,8 @@ if __name__ == '__main__':
 
     environmentGeneral = input_data.environmentGeneral
     envManager = manageEnv.manageEnv()
-    print(input_data.envDetail[1]["space"]["x"][0])
     for env in input_data.envDetail:
-        envManager.addEnvironment(env["name"], env["mua"], env["mus"], env["excitAnisotropy"], env["formula"], env["space"], env["default"])
+        envManager.addEnvironment(env["name"], env["mua"], env["mus"], env["excitAnisotropy"], env["height"], env["radius"], env["default"])
     #**********************
     #* MAIN PROGRAM
     #*********************
@@ -507,12 +502,12 @@ if __name__ == '__main__':
     Atot   = 0.0 # accumulate absorbed photon weight 
     processes = cpu_count()
 
-    octTree = OT()
+    quadTree = QuadTree()
     pixel = environmentGeneral["bins"]
     
     createEnvListTimeStart = time.time()
 
-    envList = [envManager.get_default_variables()]*(pixel*pixel*pixel)
+    envList = [envManager.get_default_variables()]*(pixel*pixel)
     print(len(envList))
     envList = envManager.assign_env(envList, pixel)
         
@@ -523,26 +518,39 @@ if __name__ == '__main__':
     createEnvListTimeEnd = time.time()
     envListTime = createEnvListTimeEnd-createEnvListTimeStart
     pixelhalf = pixel/2
-    octTree.createTree(-pixelhalf, pixelhalf, -pixelhalf, pixelhalf, -pixelhalf, pixelhalf, pixelhalf, math.log(pixel, 2), envList)
+    quadTree.create_Tree(-pixelhalf, pixelhalf, -pixelhalf, pixelhalf, pixelhalf, math.log(pixel, 2), envList)
     ocTreeTimeEnd = time.time()
     ocTreeTime = ocTreeTimeEnd-createEnvListTimeEnd
 
     print(processes)
     queue_result = Queue()
     queue_photons = Queue()
-    queue_end = Queue()
     #============================================================
     #======================= RUN N photons =====================
     # * Launch N photons, initializing each one before progation.
     #============================================================
 
-    launcherTimeStart = time.time()
-    launcher_procs = launcher_start(processes, environmentGeneral, queue_result, queue_photons, queue_end, octTree)
+
+
+    #*** LAUNCH 
+    #   Initialize photon position and trajectory.
+    #   Implements an isotropic point source.    #*** 
+    launcherTimeStart = time.time() 
+    all_launcher_procs = []
+    for i in range(0, processes):
+        print("launcher " + str(i)+ " started")
+        launcher_p = Process(target=launch, args=(queue_photons, environmentGeneral, queue_result, i, quadTree,))
+        launcher_p.daemon = True
+        launcher_p.start()
+
+        all_launcher_procs.append(launcher_p)
+
     launcherTimeEnd = time.time()
+    
     launcherTime = launcherTimeEnd - launcherTimeStart
     writer(Nphotons, processes, queue_photons)
     return_dict = sort(queue_result, processes, escapeFlux, absorbInfo, tempRsptot, Atot)
-    for idx, a_launcher_proc in enumerate(launcher_procs):
+    for idx, a_launcher_proc in enumerate(all_launcher_procs):
         print("    Waiting for reader_p.join() index %s" % idx)
 
         a_launcher_proc.join()  # Wait for a_launcher_proc() to finish
@@ -567,9 +575,9 @@ if __name__ == '__main__':
     temp = 0.0
     NR = environmentGeneral["NR"]
     NZ = environmentGeneral["NZ"]
-    dr = environmentGeneral["dr"]
+    dr = environmentGeneral["radialSize"]/environmentGeneral["NR"] #radial bin size [cm]
+    dz = environmentGeneral["depthSize"]/environmentGeneral["NZ"] #depth bin size [cm]
     PI = environmentGeneral["PI"]
-    dz = environmentGeneral["dz"]
     mua = environmentGeneral["mua"]
 
     for ir in range(1, NR+1):

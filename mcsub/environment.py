@@ -1,24 +1,23 @@
 import sympy as sp
-
 class environment:
 
-    def __init__(self, name, mua, mus, excitAnisotropy, formula, space, default):
+    def __init__(self, name, mua, mus, excitAnisotropy, height, radius, default):
         self.name = name
         self.mua = mua
         self.mus = mus
         self.excitAnisotropy = excitAnisotropy
         self.default = default                      #1, if default env, else 0
         if self.default == 0:
-            self.formula = sp.sympify(formula)          #formula to describe the environment, input has to be a string
-            self.space = space
+            self.height = height
+            self.radius = radius
 
     
 
-    def in_environment(self, ix, iy, iz):
+    def in_environment(self, radius, height):
         if self.default == 1:
             return True
-        x, y, z = sp.symbols('x y z')
-        return self.formula.subs({x: ix, y: iy, z: iz})
+        return (radius <= self.radius and self.height[0] <= height <= self.height[1])
+
     
     def get_variables(self):
         return {"name": self.name, "mua": self.mua, "mus": self.mus, "excitAnisotropy": self.excitAnisotropy}
