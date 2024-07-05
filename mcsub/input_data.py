@@ -2,7 +2,7 @@ default = 0        #if set to 1 the default numbers are taken,
                     #use this, if you're provided data throws Error
 
 nt  = 1.33          #tissue index of refraction
-Nphotons = 1000    #number of photons
+Nphotons = 100000    #number of photons
 
 environmentGeneral = {
     "mcflag": 0,            	        #0 = collimated uniform, 1 = Gaussian, 2 = isotropic point

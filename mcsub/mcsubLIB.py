@@ -7,7 +7,7 @@
 import math
 import random
 import time
-from multiprocessing import Process, Queue, cpu_count
+from multiprocessing import Process, Queue, Event, Manager, cpu_count
 import numpy as np
 import photon
 import input_data
@@ -20,12 +20,13 @@ from quadTree import QuadTree
 #   Implements an isotropic point source.
 #****
 
-def launch(queue_photons, environmentGeneral, queue_result, number, quadT):
+def launch(queue_photons, environmentGeneral, queue_result, ID, searcherQueue, searcherResp):
     while True:
         iphoton = queue_photons.get()
         if iphoton == "DONE":
-            print("END"+str(number))
+            print("END "+str(ID))
             queue_result.put("DONE")
+            searcherQueue.put("DONE")
             break
         mcflag = environmentGeneral["mcflag"]        #0 = collimated uniform, 1 = Gaussian, 2 = isotropic point
         radius = environmentGeneral["radius"]        #radius of beam (1/e width if Gaussian) (if mcflag < 2)
@@ -131,10 +132,15 @@ def launch(queue_photons, environmentGeneral, queue_result, number, quadT):
             print("choose mcflag between 0 to 2\n")
         
         photpos = phot.get_position()
-        envStart = quadT.get_env(math.sqrt(photpos[0]*photpos[0] + photpos[1]*photpos[1]), photpos[2])
+        searcherQueue.put({"ID": ID, "r": math.sqrt(photpos[0]*photpos[0] + photpos[1]*photpos[1]), "h": photpos[2]})
+        envStart = searcherResp.get()
         mut = envStart["mua"] + envStart["mus"]
         albedo = envStart["mus"]/mut
         g = envStart["excitAnisotropy"]
+
+        #mut = envStart["mua"] + envStart["mus"]
+        #albedo = envStart["mus"]/mut
+        #g = envStart["excitAnisotropy"]
 
         phot.set_weight(1.0 - rsp)  # set photon initial weight 
         tempRsptot += rsp # accumulate specular reflectance per photon 
@@ -185,7 +191,8 @@ def launch(queue_photons, environmentGeneral, queue_result, number, quadT):
                 hNew = photPosNew[2]
                 #check if boundary over new environment was crossed
                 if not checkSameBin(rOld, hOld, rNew, hNew, dr, dz):
-                    newEnv = quadT.get_env(rNew, hNew)
+                    searcherQueue.put({"ID": ID, "r": math.sqrt(photpos[0]*photpos[0] + photpos[1]*photpos[1]), "h": photpos[2]})
+                    newEnv = searcherResp.get()
                     mut = newEnv["mua"] + newEnv["mus"]
                     albedo = newEnv["mus"]/mut
                     g = newEnv["excitAnisotropy"]
@@ -276,6 +283,25 @@ def launch(queue_photons, environmentGeneral, queue_result, number, quadT):
         #return absorbInfo, escapFlux, tempRspot, Atot
         # [[(1D-number,absorbValue), ...], [(number, weight), ...], value, value]
         queue_result.put([absorbInfo, escapeFlux, tempRsptot, Atot])
+
+def search(queue, quadT, responseList, launchProcesses, endValue, processes):
+    while True:
+        if endValue.value >= launchProcesses:
+            if endValue.value < processes:
+                queue.put("DONE")
+            else:
+                while not queue.empty():
+                    rest = queue.get()
+                    print(rest)
+            break
+        msg = queue.get()
+        if msg == "DONE":
+            endValue.value += 1
+            print(endValue)
+        else:
+            env = quadT.get_env(msg["r"], msg["h"])
+            responseList[msg["ID"]].put(env)
+    print("search done")
 
 
 
@@ -500,7 +526,6 @@ if __name__ == '__main__':
     #*** INITIALIZATIONS ****
     tempRsptot = 0.0 # accumulate specular reflectance per photon 
     Atot   = 0.0 # accumulate absorbed photon weight 
-    processes = cpu_count()
 
     quadTree = QuadTree()
     pixel = environmentGeneral["bins"]
@@ -519,37 +544,53 @@ if __name__ == '__main__':
     envListTime = createEnvListTimeEnd-createEnvListTimeStart
     pixelhalf = pixel/2
     quadTree.create_Tree(-pixelhalf, pixelhalf, -pixelhalf, pixelhalf, pixelhalf, math.log(pixel, 2), envList)
-    ocTreeTimeEnd = time.time()
-    ocTreeTime = ocTreeTimeEnd-createEnvListTimeEnd
+    quadTreeTimeEnd = time.time()
+    quadTreeTime = quadTreeTimeEnd-createEnvListTimeEnd
 
-    print(processes)
+
     queue_result = Queue()
     queue_photons = Queue()
-    #============================================================
-    #======================= RUN N photons =====================
-    # * Launch N photons, initializing each one before progation.
-    #============================================================
-
-
+    queue_search = Queue()
 
     #*** LAUNCH 
     #   Initialize photon position and trajectory.
     #   Implements an isotropic point source.    #*** 
     launcherTimeStart = time.time() 
+
+    processes = cpu_count()
+    print(processes)
+
+    searchProcesses = math.ceil(processes/5)
+    launchProcesses = processes-searchProcesses
+
+    searchEnd = Manager().Value('i', 0)
+    all_searcher_resp = {}
+
     all_launcher_procs = []
-    for i in range(0, processes):
-        print("launcher " + str(i)+ " started")
-        launcher_p = Process(target=launch, args=(queue_photons, environmentGeneral, queue_result, i, quadTree,))
+    for i in range(0, launchProcesses):
+        searcher_resp = Manager().Queue()
+        all_searcher_resp[i] = searcher_resp
+        launcher_p = Process(target=launch, args=(queue_photons, environmentGeneral, queue_result, i, queue_search, searcher_resp,))
         launcher_p.daemon = True
         launcher_p.start()
+        print("launcher " + str(i)+ " started")
 
         all_launcher_procs.append(launcher_p)
 
+    all_searcher_procs = []
+    for i in range(0, searchProcesses):
+        searcher_p = Process(target=search, args=(queue_search, quadTree, all_searcher_resp, launchProcesses, searchEnd, processes, ))
+        searcher_p.daemon = True
+        searcher_p.start()
+        print("searcher" + str(i) + " started")
+
+        all_searcher_procs.append(searcher_p)
     launcherTimeEnd = time.time()
     
     launcherTime = launcherTimeEnd - launcherTimeStart
-    writer(Nphotons, processes, queue_photons)
-    return_dict = sort(queue_result, processes, escapeFlux, absorbInfo, tempRsptot, Atot)
+    writer(Nphotons, launchProcesses, queue_photons)
+    return_dict = sort(queue_result, launchProcesses, escapeFlux, absorbInfo, tempRsptot, Atot)
+    
     for idx, a_launcher_proc in enumerate(all_launcher_procs):
         print("    Waiting for reader_p.join() index %s" % idx)
 
@@ -557,7 +598,12 @@ if __name__ == '__main__':
 
         print("        reader_p() idx:%s is done" % idx)
 
+    for idx, a_searcher_proc in enumerate(all_searcher_procs):
+        print("    Waiting for searcher_p.join() index %s" % idx)
 
+        a_searcher_proc.join()  # Wait for a_launcher_proc() to finish
+
+        print("        searcher_p() idx:%s is done" % idx)    
 
     absorbInfo = return_dict[0]
     escapeFlux = return_dict[1]
@@ -600,6 +646,6 @@ if __name__ == '__main__':
     SaveFile(1, escapeFlux, absorbInfo, S, A, E, environmentGeneral, Nphotons)
     endTime = time.time()
     print("Time to create env list (sec): " + str(envListTime))
-    print("Time to create Octree (sec): " + str(ocTreeTime))
+    print("Time to create quadTree (sec): " + str(quadTreeTime))
     print("Time to start all launcher (sec): " + str(launcherTime))
     print("Over all time (sec): " + str(endTime - startTime))
