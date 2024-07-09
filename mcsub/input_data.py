@@ -17,9 +17,9 @@ environmentGeneral = {
     "boundaryflag": 1,           #boundaryflag = 1 if air/tissue surface, = 0 if infinite medium
     "radialSize": 3,                #radial size in [cm]
     "depthSize": 3,                 #depth size in [cm]
-    "NR": 64,                       #number of radial bins
-    "NZ": 64,                        #number of depth bins
-    "bins": 64,
+    "NR": 256,                       #number of radial bins
+    "NZ": 256,                        #number of depth bins
+    "bins": 128,
     "waist": 0.1,                         #1/e radius of Gaussian focus
     "THRESHOLD": 0.0001,                  #used in roulette        
     "CHANCE": 0.1,                        #used in roulette

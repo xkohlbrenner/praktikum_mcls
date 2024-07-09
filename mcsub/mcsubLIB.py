@@ -20,13 +20,12 @@ from quadTree import QuadTree
 #   Implements an isotropic point source.
 #****
 
-def launch(queue_photons, environmentGeneral, queue_result, ID, searcherQueue, searcherResp):
+def launch(queue_photons, environmentGeneral, queue_result, ID, tree):
     while True:
         iphoton = queue_photons.get()
         if iphoton == "DONE":
             print("END "+str(ID))
             queue_result.put("DONE")
-            searcherQueue.put("DONE")
             break
         mcflag = environmentGeneral["mcflag"]        #0 = collimated uniform, 1 = Gaussian, 2 = isotropic point
         radius = environmentGeneral["radius"]        #radius of beam (1/e width if Gaussian) (if mcflag < 2)
@@ -132,8 +131,7 @@ def launch(queue_photons, environmentGeneral, queue_result, ID, searcherQueue, s
             print("choose mcflag between 0 to 2\n")
         
         photpos = phot.get_position()
-        searcherQueue.put({"ID": ID, "r": math.sqrt(photpos[0]*photpos[0] + photpos[1]*photpos[1]), "h": photpos[2]})
-        envStart = searcherResp.get()
+        envStart = tree.get_env(math.sqrt(photpos[0]*photpos[0] + photpos[1]*photpos[1]), photpos[2])
         mut = envStart["mua"] + envStart["mus"]
         albedo = envStart["mus"]/mut
         g = envStart["excitAnisotropy"]
@@ -191,8 +189,7 @@ def launch(queue_photons, environmentGeneral, queue_result, ID, searcherQueue, s
                 hNew = photPosNew[2]
                 #check if boundary over new environment was crossed
                 if not checkSameBin(rOld, hOld, rNew, hNew, dr, dz):
-                    searcherQueue.put({"ID": ID, "r": math.sqrt(photpos[0]*photpos[0] + photpos[1]*photpos[1]), "h": photpos[2]})
-                    newEnv = searcherResp.get()
+                    newEnv = tree.get_env(math.sqrt(photpos[0]*photpos[0] + photpos[1]*photpos[1]), photpos[2])
                     mut = newEnv["mua"] + newEnv["mus"]
                     albedo = newEnv["mus"]/mut
                     g = newEnv["excitAnisotropy"]
@@ -283,26 +280,6 @@ def launch(queue_photons, environmentGeneral, queue_result, ID, searcherQueue, s
         #return absorbInfo, escapFlux, tempRspot, Atot
         # [[(1D-number,absorbValue), ...], [(number, weight), ...], value, value]
         queue_result.put([absorbInfo, escapeFlux, tempRsptot, Atot])
-
-def search(queue, quadT, responseList, launchProcesses, endValue, processes):
-    while True:
-        if endValue.value >= launchProcesses:
-            if endValue.value < processes:
-                queue.put("DONE")
-            else:
-                while not queue.empty():
-                    rest = queue.get()
-                    print(rest)
-            break
-        msg = queue.get()
-        if msg == "DONE":
-            endValue.value += 1
-            print(endValue)
-        else:
-            env = quadT.get_env(msg["r"], msg["h"])
-            responseList[msg["ID"]].put(env)
-    print("search done")
-
 
 
 def writer(count, num_of_reader_procs, queue):
@@ -533,7 +510,6 @@ if __name__ == '__main__':
     createEnvListTimeStart = time.time()
 
     envList = [envManager.get_default_variables()]*(pixel*pixel)
-    print(len(envList))
     envList = envManager.assign_env(envList, pixel)
         
         #for x in range(-pixel, pixel):
@@ -543,7 +519,7 @@ if __name__ == '__main__':
     createEnvListTimeEnd = time.time()
     envListTime = createEnvListTimeEnd-createEnvListTimeStart
     pixelhalf = pixel/2
-    quadTree.create_Tree(-pixelhalf, pixelhalf, -pixelhalf, pixelhalf, pixelhalf, math.log(pixel, 2), envList)
+    quadTree.create_Tree(-pixelhalf, pixelhalf, -pixelhalf, pixelhalf, pixel, math.log(pixel, 2), envList)
     quadTreeTimeEnd = time.time()
     quadTreeTime = quadTreeTimeEnd-createEnvListTimeEnd
 
@@ -558,33 +534,22 @@ if __name__ == '__main__':
     launcherTimeStart = time.time() 
 
     processes = cpu_count()
-    print(processes)
 
-    searchProcesses = math.ceil(processes/5)
-    launchProcesses = processes-searchProcesses
+
+    launchProcesses = processes
 
     searchEnd = Manager().Value('i', 0)
     all_searcher_resp = {}
 
     all_launcher_procs = []
     for i in range(0, launchProcesses):
-        searcher_resp = Manager().Queue()
-        all_searcher_resp[i] = searcher_resp
-        launcher_p = Process(target=launch, args=(queue_photons, environmentGeneral, queue_result, i, queue_search, searcher_resp,))
+        launcher_p = Process(target=launch, args=(queue_photons, environmentGeneral, queue_result, i, quadTree,))
         launcher_p.daemon = True
         launcher_p.start()
         print("launcher " + str(i)+ " started")
 
         all_launcher_procs.append(launcher_p)
 
-    all_searcher_procs = []
-    for i in range(0, searchProcesses):
-        searcher_p = Process(target=search, args=(queue_search, quadTree, all_searcher_resp, launchProcesses, searchEnd, processes, ))
-        searcher_p.daemon = True
-        searcher_p.start()
-        print("searcher" + str(i) + " started")
-
-        all_searcher_procs.append(searcher_p)
     launcherTimeEnd = time.time()
     
     launcherTime = launcherTimeEnd - launcherTimeStart
@@ -597,13 +562,6 @@ if __name__ == '__main__':
         a_launcher_proc.join()  # Wait for a_launcher_proc() to finish
 
         print("        reader_p() idx:%s is done" % idx)
-
-    for idx, a_searcher_proc in enumerate(all_searcher_procs):
-        print("    Waiting for searcher_p.join() index %s" % idx)
-
-        a_searcher_proc.join()  # Wait for a_launcher_proc() to finish
-
-        print("        searcher_p() idx:%s is done" % idx)    
 
     absorbInfo = return_dict[0]
     escapeFlux = return_dict[1]
