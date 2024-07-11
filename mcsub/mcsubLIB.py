@@ -17,17 +17,18 @@ from quadTree import QuadTree
 
 #*** LAUNCH 
 #   Initialize photon position and trajectory.
-#   Implements an isotropic point source.
+#   Implements an isotropic po source.
 #****
 
 def launch(queue_photons, environmentGeneral, queue_result, ID, tree):
+    ls = 0.1/(10*7)                                 #little step: to move the photon a bit in the voxel face
     while True:
         iphoton = queue_photons.get()
         if iphoton == "DONE":
             print("END "+str(ID))
             queue_result.put("DONE")
             break
-        mcflag = environmentGeneral["mcflag"]        #0 = collimated uniform, 1 = Gaussian, 2 = isotropic point
+        mcflag = environmentGeneral["mcflag"]        #0 = collimated uniform, 1 = Gaussian, 2 = isotropic po
         radius = environmentGeneral["radius"]        #radius of beam (1/e width if Gaussian) (if mcflag < 2)
         tissueRefractive = environmentGeneral["tissueRefractive"]    #refractive index of tissue, former tissueRefractive
         tissueExtMedium = environmentGeneral["tissueExtMedium"]      #refractive index of external medium, former tissueExtMedium
@@ -73,7 +74,7 @@ def launch(queue_photons, environmentGeneral, queue_result, ID, tree):
             uy = 0
             uz = 1  
             # specular reflectance 
-            temp   = tissueRefractive/tissueExtMedium # refractive index mismatch, internal/external 
+            temp   = tissueRefractive/tissueExtMedium # refractive index mismatch, ernal/external 
             temp   = (1.0 - temp)/(1.0 + temp)
             rsp    = temp*temp # specular reflectance at boundary 
             
@@ -84,7 +85,7 @@ def launch(queue_photons, environmentGeneral, queue_result, ID, tree):
             # * assigned to x while y = 0. 
             # * radius = 1/e radius of Gaussian beam at surface. 
             # * waist  = 1/e radius of Gaussian focus.
-            # * zfocus = depth of focal point. 
+            # * zfocus = depth of focal po. 
             # Initial position 
             # avoids rnd = 0 
             rnd = float(1-random.random())
@@ -107,7 +108,7 @@ def launch(queue_photons, environmentGeneral, queue_result, ID, tree):
             (rsp, uz) = RFresnel(tissueExtMedium, tissueRefractive, costheta) # new uz 
             ux  = math.sqrt(1.0 - uz*uz) # new ux 
         elif  (mcflag == 2):
-            # ISOTROPIC POINT SOURCE AT POSITION xs,ys,zs 
+            # ISOTROPIC PO SOURCE AT POSITION xs,ys,zs 
             # Initial position 
             phot.update_positon(xs, ys, zs)
             #x = xs
@@ -132,6 +133,8 @@ def launch(queue_photons, environmentGeneral, queue_result, ID, tree):
         
         photpos = phot.get_position()
         envStart = tree.get_env(math.sqrt(photpos[0]*photpos[0] + photpos[1]*photpos[1]), photpos[2])
+        envName = envStart["name"]
+        mus = envStart["mus"]
         mut = envStart["mua"] + envStart["mus"]
         albedo = envStart["mus"]/mut
         g = envStart["excitAnisotropy"]
@@ -155,31 +158,10 @@ def launch(queue_photons, environmentGeneral, queue_result, ID, tree):
             # * ux, uy, uz are cosines of current photon trajectory
             # ****
             rnd = 1-random.random()   # avoids rnd = 0 
-            s = -math.log(rnd)/mut   # Step size.  Note: log() is base e 
+            sleft = -math.log(rnd)/mut   # Step size.  Note: log() is base e
 
-            # Does photon ESCAPE at surface? ... z + s*uz <= 0? 
-            if ((boundaryflag == 1) & (phot.get_position()[2] + s*uz <= 0)):
-                # Check Fresnel reflectance at surface boundary 
-                rf, uz1 = RFresnel(tissueRefractive, tissueExtMedium, -uz)
-                if (rnd > rf): 
-                    # Photon escapes at external angle, uz1 = cos(angle) 
-                    s  = abs(phot.get_position()[2]/uz) # calculate stepsize to reach surface 
-                    phot.update_positon(s*ux, s*uy, 0)
-                    #x += s*ux       # partial step to reach surface 
-                    #y += s*uy
-                    pos = phot.get_position()
-                    r = math.sqrt(pos[0]*pos[0] + pos[1]*pos[1])   # find radial position r 
-                    ir = round((r/dr) + 1) # round to 1 <= ir 
-                    ir = min(ir,NR)  # ir = NR is overflow bin 
-                    escapeFlux.append((ir, phot.get_weight()))      # increment escaping flux 
-                    phot.update_dead()
-                    
-                else:
-                    pos = phot.get_position()
-                    phot.update_positon(0, 0, -(pos[2] + s*uz))
-                    #z = -(z + s*uz)   # Total internal reflection. 
-                    uz = -uz
-            else:
+            while sleft > 0:
+                s = sleft/mus				# Step size [cm]
                 photPosOld = phot.get_position()
                 phot.update_positon(s*ux, s*uy, s*uz)   #update Positions
                 photPosNew = phot.get_position()
@@ -187,42 +169,101 @@ def launch(queue_photons, environmentGeneral, queue_result, ID, tree):
                 hOld = photPosOld[2]
                 rNew = math.sqrt(photPosNew[0]*photPosNew[0] + photPosNew[1]*photPosNew[1])
                 hNew = photPosNew[2]
-                #check if boundary over new environment was crossed
-                if not checkSameBin(rOld, hOld, rNew, hNew, dr, dz):
-                    newEnv = tree.get_env(math.sqrt(photpos[0]*photpos[0] + photpos[1]*photpos[1]), photpos[2])
-                    mut = newEnv["mua"] + newEnv["mus"]
-                    albedo = newEnv["mus"]/mut
-                    g = newEnv["excitAnisotropy"]
-                #x += s*ux           # Update positions. 
-                #y += s*uy
-                #z += s*uz
+
+                sv = checkSameBin(rOld, hOld, rNew, hNew, dr, dz)
+
+                if sv:
+                    #*** DROP
+                    # * Drop photon weight (W) o local bin.
+                    # ****
+                    absorb = phot.get_weight()*(1 - albedo)       # photon weight absorbed at this step 
+                    phot.update_weight(-absorb)                  # decrement WEIGHT by amount absorbed 
+                    Atot += absorb               # accumulate absorbed photon weight 
+                    # deposit power in cylindrical coordinates z,r 
+                    pos = phot.get_position()
+                    r  = math.sqrt(pos[0]*pos[0] + pos[1]*pos[1])         # current cylindrical radial position 
+                    ir = round((r/dr) + 1)        
+                    iz = round((abs(pos[2])/dz) + 1)  
+                    ir = min(ir, NR)    # round to 1 <= ir, iz 
+                    iz = min(iz, NZ)    # last bin is for overflow 
+                    absorbInfo.append((iz*NR + ir, absorb))          # DROP absorbed weight o bin 
                     
+                    sleft = 0
+                
+                #photon has crossed voxel boundary
+                else:
+                    #check if both voxels have the same environment
+                    newEnv = tree.get_env(rNew, hNew)
+                    if newEnv["name"] == envName:
+                        #*** DROP
+                        # * Drop photon weight (W) o local bin.
+                        # ****
+                        absorb = phot.get_weight()*(1 - albedo)       # photon weight absorbed at this step 
+                        phot.update_weight(-absorb)                  # decrement WEIGHT by amount absorbed 
+                        Atot += absorb               # accumulate absorbed photon weight 
+                        # deposit power in cylindrical coordinates z,r 
+                        pos = phot.get_position()
+                        r  = math.sqrt(pos[0]*pos[0] + pos[1]*pos[1])         # current cylindrical radial position 
+                        ir = round((r/dr) + 1)        
+                        iz = round((abs(pos[2])/dz) + 1)  
+                        ir = min(ir, NR)    # round to 1 <= ir, iz 
+                        iz = min(iz, NZ)    # last bin is for overflow 
+                        absorbInfo.append((iz*NR + ir, absorb))          # DROP absorbed weight o bin 
+                        
+                        sleft = 0
+                    
+                    #next voxel has different environment
+                    else:
+                        phot.update_positon(-s*ux, -s*uy, -s*uz)   #update to old positions
 
-            if phot.get_status():
-                #********************************************
-                # ****** SPINCYCLE = DROP_SPIN_ROULETTE ******
-                # ********************************************
+                        s = ls + FindVoxelFace2(rOld, hOld, dr, dz, math.sqrt(ux*ux + uy*uy), uz)
 
-                #*** DROP
-                # * Drop photon weight (W) into local bin.
-                # ****
-                absorb = phot.get_weight()*(1 - albedo)       # photon weight absorbed at this step 
-                phot.update_weight(-absorb)                  # decrement WEIGHT by amount absorbed 
-                Atot += absorb               # accumulate absorbed photon weight 
-                # deposit power in cylindrical coordinates z,r 
-                pos = phot.get_position()
-                r  = math.sqrt(pos[0]*pos[0] + pos[1]*pos[1])         # current cylindrical radial position 
-                ir = round((r/dr) + 1)        
-                iz = round((abs(pos[2])/dz) + 1)  
-                ir = min(ir, NR)    # round to 1 <= ir, iz 
-                iz = min(iz, NZ)    # last bin is for overflow 
-                absorbInfo.append((iz*NR + ir, absorb))          # DROP absorbed weight into bin 
+                        absorb = phot.get_weight()*(1 - albedo)       # photon weight absorbed at this step 
+                        phot.update_weight(-absorb)                  # decrement WEIGHT by amount absorbed 
+                        Atot += absorb               # accumulate absorbed photon weight 
+                        # deposit power in cylindrical coordinates z,r 
+                        pos = phot.get_position()
+                        r  = math.sqrt(pos[0]*pos[0] + pos[1]*pos[1])         # current cylindrical radial position 
+                        ir = round((r/dr) + 1)        
+                        iz = round((abs(pos[2])/dz) + 1)  
+                        ir = min(ir, NR)    # round to 1 <= ir, iz 
+                        iz = min(iz, NZ)    # last bin is for overflow 
+                        absorbInfo.append((iz*NR + ir, absorb))          # DROP absorbed weight o bin 
+                        
+                        if sleft <= ls: 
+                            sleft = 0
+                        
+                        #update positions until the next 
+                        phot.update_positon(s*ux, s*uy, s*uz)   #update positions
+                        if pos <= 0:
+                            rf, uz1 = RFresnel(tissueRefractive, tissueExtMedium, -uz)
+                            if (rnd > rf):
+                                phot.update_positon(-s*ux, -s*uy, -s*uz)   #return to original positions
+                                # Photon escapes at external angle, uz1 = cos(angle) 
+                                s  = abs(pos[2]/uz) # calculate stepsize to reach surface 
+                                phot.update_positon(s*ux, s*uy, s*uz)
+                                pos = phot.get_position()
+                                r = math.sqrt(pos[0]*pos[0] + pos[1]*pos[1])   # find radial position r 
+                                ir = round((r/dr) + 1) # round to 1 <= ir 
+                                ir = min(ir,NR)  # ir = NR is overflow bin 
+                                escapeFlux.append((ir, phot.get_weight()))      # increment escaping flux 
+                                phot.update_dead()
+                                
+                            else:
+                                pos = phot.get_position()
+                                phot.update_positon(0, 0, -pos[2])
+                                uz = -uz                            
+                        
+                        envName = newEnv["name"]
+                        mut = newEnv["mua"] + newEnv["mus"]
+                        albedo = newEnv["mus"]/mut
+                        g = newEnv["excitAnisotropy"]
 
                 #*** SPIN 
-                # * Scatter photon into new trajectory defined by theta and psi.
+                # * Scatter photon o new trajectory defined by theta and psi.
                 # * Theta is specified by cos(theta), which is determined 
                 # * based on the Henyey-Greenstein scattering function.
-                # * Convert theta and psi into cosines ux, uy, uz. 
+                # * Convert theta and psi o cosines ux, uy, uz. 
                 # ****
                 # Sample for costheta 
                 rndCos = 1-random.random()
@@ -283,9 +324,9 @@ def launch(queue_photons, environmentGeneral, queue_result, ID, tree):
 
 
 def writer(count, num_of_reader_procs, queue):
-    """Write integers into the queue.  A reader_proc() will read them from the queue"""
+    """Write egers o the queue.  A reader_proc() will read them from the queue"""
     for ii in range(0, count):
-        queue.put(ii)  # Put 'count' numbers into queue
+        queue.put(ii)  # Put 'count' numbers o queue
 
     ### Tell all readers to stop...
     for ii in range(0, num_of_reader_procs+1):
@@ -317,9 +358,32 @@ def checkSameBin( x1, y1,  x2,  y2,  dx, dy):
 #  **** END of SPINCYCLE = DROP_SPIN_ROULETTE *
 #  *********************************************
 
+def FindVoxelFace2(r1, z1, dr, dz, ur, uz):
+	
+    ir1 = r1/dr
+    iz1 = z1/dz
+    
+    if ur>=0:
+        ir2 = ir1+1
+    else:
+        ir2 = ir1
+    
+    if uz>=0:
+        iz2 = iz1+1
+    else:
+        iz2 = iz1
+    
+    rs = abs((ir2*dr - r1)/ur)
+    zs = abs((iz2*dz - z1)/uz)
+    
+    s = min(rs, zs)
+    
+    return s
+
+
 def RFresnel(n1,		# incident refractive index.
             n2,		# transmit refractive index.
-            ca1): 	# pointer to the cosine 
+            ca1): 	# poer to the cosine 
                     # of the transmission 
                     # angle a2, a2>0. 
     if n1==n2: #* matched boundary. *
@@ -338,7 +402,7 @@ def RFresnel(n1,		# incident refractive index.
         sa1 = math.sqrt(1-ca1*ca1)
         sa2 = n1*sa1/n2
         if sa2>=1.0:
-            #  check for total internal reflection. 
+            #  check for total ernal reflection. 
             ca2_Ptr = 0.0
             r = 1.0
         else:
@@ -362,7 +426,7 @@ def SaveFile(Nfile,  J,  F,  S,  A,  E, environmentGeneral, Nphotons):
 
     mua = environmentGeneral["mua"]
     mus = environmentGeneral["mus"]
-    mcflag = environmentGeneral["mcflag"]        #0 = collimated uniform, 1 = Gaussian, 2 = isotropic point
+    mcflag = environmentGeneral["mcflag"]        #0 = collimated uniform, 1 = Gaussian, 2 = isotropic po
     radius = environmentGeneral["radius"]        #radius of beam (1/e width if Gaussian) (if mcflag < 2)
     tissueRefractive = environmentGeneral["tissueRefractive"]    #refractive index of tissue, former tissueRefractive
     tissueExtMedium = environmentGeneral["tissueExtMedium"]      #refractive index of external medium, former tissueExtMedium
@@ -385,7 +449,7 @@ def SaveFile(Nfile,  J,  F,  S,  A,  E, environmentGeneral, Nphotons):
     print("mcOUT%d.dat" % Nfile)
     file = open("mcOUT" + str(Nfile) + ".dat", "w")
 
-    # print run parameters 
+    # pr run parameters 
     file.write("%0.3e\tmua, absorption coefficient [1/cm]\n" % mua)
     file.write("%0.4f\tmus, scattering coefficient [1/cm]\n" % mus)
     file.write("%0.4f\tg, anisotropy [-]\n" % g)
@@ -403,12 +467,12 @@ def SaveFile(Nfile,  J,  F,  S,  A,  E, environmentGeneral, Nphotons):
     file.write("%0.5f\tdz\n" % dz)
     file.write("%0.1e\tNphotons\n" % Nphotons)
 
-    # print SAE values 
+    # pr SAE values 
     file.write("%1.6e\tSpecular reflectance\n" % S)
     file.write("%1.6e\tAbsorbed fraction\n" % A)
     file.write("%1.6e\tEscaping fraction\n" % E)
 
-    # print r[ir] to row 
+    # pr r[ir] to row 
     file.write("%0.1f" % 0.0) # ignore upperleft element of matrix 
     for ir in range(1, NR+1):
         r2 = dr*ir
@@ -417,13 +481,13 @@ def SaveFile(Nfile,  J,  F,  S,  A,  E, environmentGeneral, Nphotons):
         file.write("\t%1.5f" % r)
     file.write("\n")
 
-    # print J[ir] to next row 
+    # pr J[ir] to next row 
     file.write("%0.1f" % 0.0) # ignore this first element of 2nd row 
     for ir in range(1, NR+1):	
         file.write("\t%1.12e" % J[ir])
     file.write("\n")
 
-    # printf z[iz], F[iz][ir] to remaining rows 
+    # prf z[iz], F[iz][ir] to remaining rows 
     for iz in range(1, NR+1):
         z = (iz - 0.5)*dz # z values for depth position in 1st column 
         file.write("%1.5f" % z)
@@ -451,7 +515,7 @@ if __name__ == '__main__':
     Nfile = 0       # saves as mcOUTi.dat, where i = Nfile 
     # Run parameters 
     Nphotons = input_data.Nphotons # number of photons to be launched 
-    PRINTOUT = 1
+    PROUT = 1
     #***********************
     #***** Setup output parameters, vectors, arrays *********
     #S     specular reflectance at air/tissue boundary 
@@ -486,8 +550,8 @@ if __name__ == '__main__':
     #*			n1        = refractive index of tissue
     #*			n2        = refractive index of external medium
     #*	Incident beam characteristics:
-    #*			mcflag:   0 = collimated uniform, 1 = Gaussian, 2 = isotropic point
-    #*			xs,ys,zs  = position of istropic point source (if mcflag = 2)
+    #*			mcflag:   0 = collimated uniform, 1 = Gaussian, 2 = isotropic po
+    #*			xs,ys,zs  = position of istropic po source (if mcflag = 2)
     #*			boundaryflag = 1 if air/tissue surface, = 0 if infinite medium
     #*			radius    = radius of beam (1/e width if Gaussian) (if mcflag < 2)
     #*			waist     = 1/e radius of focus (if Gaussian (if mcflag = 1)
@@ -495,9 +559,9 @@ if __name__ == '__main__':
     #*	OUTPUT:
     #*			J[ir]     = vector of escaping flux [cm^-2] versus radial position
     #*			F[iz][ir] = matrix of fluence rate [cm^-2] = [W/cm2 per W]
-    #*			Sptr      = pointer to S, specular refelctance
-    #*			Aptr      = pointer to A, total absorbed fraction
-    #*			Eptr      = pointer to E, total escaping fraction 
+    #*			Sptr      = poer to S, specular refelctance
+    #*			Aptr      = poer to A, total absorbed fraction
+    #*			Eptr      = poer to E, total escaping fraction 
     #*
 
     #*** INITIALIZATIONS ****
@@ -530,7 +594,7 @@ if __name__ == '__main__':
 
     #*** LAUNCH 
     #   Initialize photon position and trajectory.
-    #   Implements an isotropic point source.    #*** 
+    #   Implements an isotropic po source.    #*** 
     launcherTimeStart = time.time() 
 
     processes = cpu_count()

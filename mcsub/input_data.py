@@ -19,7 +19,7 @@ environmentGeneral = {
     "depthSize": 3,                 #depth size in [cm]
     "NR": 256,                       #number of radial bins
     "NZ": 256,                        #number of depth bins
-    "bins": 128,
+    "bins": 256,
     "waist": 0.1,                         #1/e radius of Gaussian focus
     "THRESHOLD": 0.0001,                  #used in roulette        
     "CHANCE": 0.1,                        #used in roulette
