@@ -226,7 +226,7 @@ def launch(queue_photons, environmentGeneral, queue_result, ID, tree):
                     else:
                         phot.update_positon(-s*ux, -s*uy, -s*uz)   #update to old positions
 
-                        s = ls + FindVoxelFace(rOld, hOld, dr, dz, math.sqrt(ux*ux + uy*uy), uz)
+                        s = ls + find_next_border(rOld, hOld, dr, dz, math.sqrt(ux*ux + uy*uy), uz)
                         phot.update_positon(s*ux, s*uy, s*uz)
                         
                         absorb = phot.get_weight()*(1 - albedo)       # photon weight absorbed at this step 
@@ -354,7 +354,7 @@ def checkSameBin( x1, y1,  x2,  y2,  dx, dy):
 #  **** END of SPINCYCLE = DROP_SPIN_ROULETTE *
 #  *********************************************
 
-def FindVoxelFace(r1, z1, dr, dz, ur, uz):
+def find_next_border(r1, z1, dr, dz, ur, uz):
 	
     ir1 = r1/dr
     iz1 = z1/dz

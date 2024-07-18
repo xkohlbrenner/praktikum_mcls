@@ -31,7 +31,7 @@ class manageEnv:
     #based on the radius and height only spefic bins are checked if they are in the corresponding environment
     def assign_env(self, envList, pixel):
         for env in self.envArray:
-            for h in range(0, math.ceil(env.height)+1):
+            for h in range(math.ceil(env.height[0]), math.ceil(env.height[1])+1):
                 for r in range(0, math.ceil(env.radius)+1):
                     if env.in_environment(r+0.5, h+0.5):
                         envList[int(abs(h)*pixel+ abs(r))] = env.get_variables()
