@@ -1,9 +1,3 @@
-#refractive missing
-#extra processes for tree managment
-
-
-
-
 import math
 import random
 import time
@@ -37,13 +31,12 @@ def launch(queue_photons, environmentGeneral, queue_result, ID, tree):
         xs = environmentGeneral["xs"]                #used if mcflag = 2, isotropic pt source
         ys = environmentGeneral["ys"]                #used if mcflag = 2, isotropic pt source
         zs = environmentGeneral["zs"]                #used if mcflag = 2, isotropic pt source
-        boundaryflag = environmentGeneral["boundaryflag"]    #boundaryflag = 1 if air/tissue surface, = 0 if infinite medium
-        dr = environmentGeneral["radialSize"]/environmentGeneral["NR"] #radial bin size [cm]
-        dz = environmentGeneral["depthSize"]/environmentGeneral["NZ"] #depth bin size [cm]
+        dr = environmentGeneral["radialSize"]/environmentGeneral["bins"] #radial bin size [cm]
+        dz = environmentGeneral["depthSize"]/environmentGeneral["bins"] #depth bin size [cm]
         #dr = environmentGeneral["dr"]                        #radial bin size [cm]
         #dz = environmentGeneral["dz"]                        #depth bin size [cm]
-        NR = environmentGeneral["NR"]                        #number of radial bins
-        NZ = environmentGeneral["NZ"]                        #number of depth bins
+        NR = environmentGeneral["bins"]                        #number of radial bins
+        NZ = environmentGeneral["bins"]                        #number of depth bins
         waist = environmentGeneral["waist"]                  #1/e radius of Gaussian focus
         THRESHOLD = environmentGeneral["THRESHOLD"]          #used in roulette        
         CHANCE = environmentGeneral["CHANCE"]                #used in roulette
@@ -133,11 +126,11 @@ def launch(queue_photons, environmentGeneral, queue_result, ID, tree):
         
         photpos = phot.get_position()
         envStart = tree.get_env(math.sqrt(photpos[0]*photpos[0] + photpos[1]*photpos[1]), photpos[2])
-        envName = envStart["name"]
         mus = envStart["mus"]
         mut = envStart["mua"] + envStart["mus"]
         albedo = envStart["mus"]/mut
         g = envStart["excitAnisotropy"]
+        envName = envStart["name"]
 
         #mut = envStart["mua"] + envStart["mus"]
         #albedo = envStart["mus"]/mut
@@ -158,7 +151,7 @@ def launch(queue_photons, environmentGeneral, queue_result, ID, tree):
             # * ux, uy, uz are cosines of current photon trajectory
             # ****
             rnd = 1-random.random()   # avoids rnd = 0 
-            sleft = -math.log(rnd)/mut   # Step size.  Note: log() is base e
+            sleft = -math.log(rnd)/mut   # Step size
 
             while sleft > 0:
                 s = sleft/mus				# Step size [cm]
@@ -192,10 +185,28 @@ def launch(queue_photons, environmentGeneral, queue_result, ID, tree):
                 
                 #photon has crossed voxel boundary
                 else:
+                    pos = phot.get_position()
+                    if pos[2] <= 0:
+                        rf, uz1 = RFresnel(tissueRefractive, tissueExtMedium, -uz)
+                        if (rnd > rf):
+                            phot.update_positon(-s*ux, -s*uy, -s*uz)   #return to original positions
+                            # Photon escapes at external angle, uz1 = cos(angle) 
+                            s  = abs(pos[2]/uz) # calculate stepsize to reach surface 
+                            phot.update_positon(s*ux, s*uy, s*uz)
+                            pos = phot.get_position()
+                            r = math.sqrt(pos[0]*pos[0] + pos[1]*pos[1])   # find radial position r 
+                            ir = round((r/dr) + 1) # round to 1 <= ir 
+                            ir = min(ir,NR)  # ir = NR is overflow bin 
+                            escapeFlux.append((ir, phot.get_weight()))      # increment escaping flux 
+                            phot.update_dead()
+                            
+                        else:
+                            phot.update_positon(0, 0, -pos[2])
+                            uz = -uz
                     #check if both voxels have the same environment
                     newEnv = tree.get_env(rNew, hNew)
                     if newEnv["name"] == envName:
-                        #*** DROP
+                                            #*** DROP
                         # * Drop photon weight (W) o local bin.
                         # ****
                         absorb = phot.get_weight()*(1 - albedo)       # photon weight absorbed at this step 
@@ -211,13 +222,13 @@ def launch(queue_photons, environmentGeneral, queue_result, ID, tree):
                         absorbInfo.append((iz*NR + ir, absorb))          # DROP absorbed weight o bin 
                         
                         sleft = 0
-                    
-                    #next voxel has different environment
+
                     else:
                         phot.update_positon(-s*ux, -s*uy, -s*uz)   #update to old positions
 
-                        s = ls + FindVoxelFace2(rOld, hOld, dr, dz, math.sqrt(ux*ux + uy*uy), uz)
-
+                        s = ls + FindVoxelFace(rOld, hOld, dr, dz, math.sqrt(ux*ux + uy*uy), uz)
+                        phot.update_positon(s*ux, s*uy, s*uz)
+                        
                         absorb = phot.get_weight()*(1 - albedo)       # photon weight absorbed at this step 
                         phot.update_weight(-absorb)                  # decrement WEIGHT by amount absorbed 
                         Atot += absorb               # accumulate absorbed photon weight 
@@ -229,38 +240,23 @@ def launch(queue_photons, environmentGeneral, queue_result, ID, tree):
                         ir = min(ir, NR)    # round to 1 <= ir, iz 
                         iz = min(iz, NZ)    # last bin is for overflow 
                         absorbInfo.append((iz*NR + ir, absorb))          # DROP absorbed weight o bin 
-                        
+
                         if sleft <= ls: 
                             sleft = 0
-                        
-                        #update positions until the next 
-                        phot.update_positon(s*ux, s*uy, s*uz)   #update positions
-                        if pos <= 0:
-                            rf, uz1 = RFresnel(tissueRefractive, tissueExtMedium, -uz)
-                            if (rnd > rf):
-                                phot.update_positon(-s*ux, -s*uy, -s*uz)   #return to original positions
-                                # Photon escapes at external angle, uz1 = cos(angle) 
-                                s  = abs(pos[2]/uz) # calculate stepsize to reach surface 
-                                phot.update_positon(s*ux, s*uy, s*uz)
-                                pos = phot.get_position()
-                                r = math.sqrt(pos[0]*pos[0] + pos[1]*pos[1])   # find radial position r 
-                                ir = round((r/dr) + 1) # round to 1 <= ir 
-                                ir = min(ir,NR)  # ir = NR is overflow bin 
-                                escapeFlux.append((ir, phot.get_weight()))      # increment escaping flux 
-                                phot.update_dead()
-                                
-                            else:
-                                pos = phot.get_position()
-                                phot.update_positon(0, 0, -pos[2])
-                                uz = -uz                            
-                        
-                        envName = newEnv["name"]
-                        mut = newEnv["mua"] + newEnv["mus"]
-                        albedo = newEnv["mus"]/mut
-                        g = newEnv["excitAnisotropy"]
+                    
+                    #update positions until the next 
+                    phot.update_positon(s*ux, s*uy, s*uz)   #update positions
+                                              
+                    
+                    newEnv = tree.get_env(r, pos[2])
+                    
+                    mut = newEnv["mua"] + newEnv["mus"]
+                    albedo = newEnv["mus"]/mut
+                    g = newEnv["excitAnisotropy"]
+                    envName = newEnv["name"]
 
                 #*** SPIN 
-                # * Scatter photon o new trajectory defined by theta and psi.
+                # * Scatter photon on new trajectory defined by theta and psi.
                 # * Theta is specified by cos(theta), which is determined 
                 # * based on the Henyey-Greenstein scattering function.
                 # * Convert theta and psi o cosines ux, uy, uz. 
@@ -358,7 +354,7 @@ def checkSameBin( x1, y1,  x2,  y2,  dx, dy):
 #  **** END of SPINCYCLE = DROP_SPIN_ROULETTE *
 #  *********************************************
 
-def FindVoxelFace2(r1, z1, dr, dz, ur, uz):
+def FindVoxelFace(r1, z1, dr, dz, ur, uz):
 	
     ir1 = r1/dr
     iz1 = z1/dz
@@ -372,9 +368,13 @@ def FindVoxelFace2(r1, z1, dr, dz, ur, uz):
         iz2 = iz1+1
     else:
         iz2 = iz1
-    
-    rs = abs((ir2*dr - r1)/ur)
-    zs = abs((iz2*dz - z1)/uz)
+
+    rs = 0
+    zs = 0
+    if ur != 0:
+        rs = abs((ir2*dr - r1)/ur)
+    if uz != 0:
+        zs = abs((iz2*dz - z1)/uz)
     
     s = min(rs, zs)
     
@@ -437,10 +437,10 @@ def SaveFile(Nfile,  J,  F,  S,  A,  E, environmentGeneral, Nphotons):
     zs = environmentGeneral["zs"]                #used if mcflag = 2, isotropic pt source
     mut = environmentGeneral["mua"] + environmentGeneral["mus"]        #mua: absorption coefficient [cm^-1], mus: scattering coefficient [cm^-1]
     boundaryflag = environmentGeneral["boundaryflag"]    #boundaryflag = 1 if air/tissue surface, = 0 if infinite medium
-    dr = environmentGeneral["radialSize"]/environmentGeneral["NR"] #radial bin size [cm]
-    dz = environmentGeneral["depthSize"]/environmentGeneral["NZ"] #depth bin size [cm]
-    NR = environmentGeneral["NR"]                        #number of radial bins
-    NZ = environmentGeneral["NZ"]                        #number of depth bins
+    dr = environmentGeneral["radialSize"]/environmentGeneral["bins"] #radial bin size [cm]
+    dz = environmentGeneral["depthSize"]/environmentGeneral["bins"] #depth bin size [cm]
+    NR = environmentGeneral["bins"]                        #number of radial bins
+    NZ = environmentGeneral["bins"]                        #number of depth bins
     waist = environmentGeneral["waist"]                  #1/e radius of Gaussian focus
     g = environmentGeneral["excitAnisotropy"]                          #excitation anisotropy [dimensionless]
     THRESHOLD = environmentGeneral["THRESHOLD"]          #used in roulette        
@@ -503,7 +503,7 @@ if __name__ == '__main__':
     environmentGeneral = input_data.environmentGeneral
     envManager = manageEnv.manageEnv()
     for env in input_data.envDetail:
-        envManager.addEnvironment(env["name"], env["mua"], env["mus"], env["excitAnisotropy"], env["height"], env["radius"], env["default"])
+        envManager.add_environment(env["name"], env["mua"], env["mus"], env["excitAnisotropy"], env["height"], env["radius"], env["default"], environmentGeneral["bins"]/environmentGeneral["depthSize"])
     #**********************
     #* MAIN PROGRAM
     #*********************
@@ -523,8 +523,8 @@ if __name__ == '__main__':
     #E     total fraction of light escaping tissue 
     #J     escaping flux, J[ir], [W/cm2 per W incident] 
     #F     fluence rate, F[iz][ir], [W/cm2 per W incident] 
-    escapeFlux       = np.zeros(environmentGeneral["NR"]+1)        # for escaping flux 
-    absorbInfo       = np.zeros((environmentGeneral["NZ"]+1)*(environmentGeneral["NR"]+1)) # for absorbed fluence rate 
+    escapeFlux       = np.zeros(environmentGeneral["bins"]+1)        # for escaping flux 
+    absorbInfo       = np.zeros((environmentGeneral["bins"]+1)*(environmentGeneral["bins"]+1)) # for absorbed fluence rate 
     #***********************
     #***********************
 
@@ -598,12 +598,7 @@ if __name__ == '__main__':
     launcherTimeStart = time.time() 
 
     processes = cpu_count()
-
-
     launchProcesses = processes
-
-    searchEnd = Manager().Value('i', 0)
-    all_searcher_resp = {}
 
     all_launcher_procs = []
     for i in range(0, launchProcesses):
@@ -641,10 +636,10 @@ if __name__ == '__main__':
     # *              where bin = 2.0*PI*r[ir]*dr*dz [cm^3].
     # ***********************
     temp = 0.0
-    NR = environmentGeneral["NR"]
-    NZ = environmentGeneral["NZ"]
-    dr = environmentGeneral["radialSize"]/environmentGeneral["NR"] #radial bin size [cm]
-    dz = environmentGeneral["depthSize"]/environmentGeneral["NZ"] #depth bin size [cm]
+    NR = environmentGeneral["bins"]
+    NZ = environmentGeneral["bins"]
+    dr = environmentGeneral["radialSize"]/NR #radial bin size [cm]
+    dz = environmentGeneral["depthSize"]/NR #depth bin size [cm]
     PI = environmentGeneral["PI"]
     mua = environmentGeneral["mua"]
 

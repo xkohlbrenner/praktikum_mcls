@@ -10,20 +10,13 @@ class Node:
         self.env = 0
         self.children = []
         self.ID = 0
-
-    #returns the outer variabels of the node
-    def get_outer_var(self):
-        return {"x1": self.x1, "x2": self.x2, "y1": self.y1, "y2": self.y2}
-    
+   
     #provided node becomes child
     def set_child(self, child):
         self.children.append(child)
     
     def set_env(self, env):
         self.env = env
-
-    def set_unique_number(self, number):
-        self.ID = number
 
     #returns the environment of the node
     #if the node has no environment it searchs the right kid for coordinates and calls itself again
