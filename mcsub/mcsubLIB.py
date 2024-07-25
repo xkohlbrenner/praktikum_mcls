@@ -24,7 +24,6 @@ def launch(queue_photons, environmentGeneral, queue_result, ID, tree):
             break
         mcflag = environmentGeneral["mcflag"]        #0 = collimated uniform, 1 = Gaussian, 2 = isotropic po
         radius = environmentGeneral["radius"]        #radius of beam (1/e width if Gaussian) (if mcflag < 2)
-        tissueRefractive = environmentGeneral["tissueRefractive"]    #refractive index of tissue, former tissueRefractive
         tissueExtMedium = environmentGeneral["tissueExtMedium"]      #refractive index of external medium, former tissueExtMedium
         zfocus = environmentGeneral["zfocus"]                       #depth of focus (if Gaussian (if mcflag = 1)
         PI = 3.1415926
@@ -58,16 +57,16 @@ def launch(queue_photons, environmentGeneral, queue_result, ID, tree):
             # * radius = radius of uniform beam. 
             # Initial position 
             rnd = float(1-random.random()) #random takes uniformly a number of (0,1]
-            phot.update_positon(radius*math.sqrt(rnd), 0, zs)
-            #x = radius*math.sqrt(rnd)
-            #y = 0
-            #z = zs
+            phot.update_positon(radius*math.sqrt(rnd), 0, 0)
             # Initial trajectory as cosines 
             ux = 0
             uy = 0
             uz = 1  
-            # specular reflectance 
-            temp   = tissueRefractive/tissueExtMedium # refractive index mismatch, ernal/external 
+            # specular reflectance
+            photpos = phot.get_position()        
+            envStart = tree.get_env(math.sqrt(photpos[0]*photpos[0] + photpos[1]*photpos[1]), photpos[2])
+            refIndex = envStart["refIndex"]
+            temp   = refIndex/tissueExtMedium # refractive index mismatch, ernal/external 
             temp   = (1.0 - temp)/(1.0 + temp)
             rsp    = temp*temp # specular reflectance at boundary 
             
@@ -78,7 +77,7 @@ def launch(queue_photons, environmentGeneral, queue_result, ID, tree):
             # * assigned to x while y = 0. 
             # * radius = 1/e radius of Gaussian beam at surface. 
             # * waist  = 1/e radius of Gaussian focus.
-            # * zfocus = depth of focal po. 
+            # * zfocus = depth of focal point T. 
             # Initial position 
             # avoids rnd = 0 
             rnd = float(1-random.random())
@@ -92,21 +91,19 @@ def launch(queue_photons, environmentGeneral, queue_result, ID, tree):
             # avoids rnd = 0  
             xfocus = waist*math.sqrt(-math.log(rnd))
             temp = math.sqrt((x - xfocus)*(x - xfocus) + zfocus*zfocus)
-            sintheta = -(x - xfocus)/temp
             costheta = zfocus/temp
-            ux = sintheta
-            uy = 0.0
-            uz = costheta
-            # specular reflectance and refraction 
-            (rsp, uz) = RFresnel(tissueExtMedium, tissueRefractive, costheta) # new uz 
+            # specular reflectance and refraction
+            photpos = phot.get_position()        
+            envStart = tree.get_env(math.sqrt(photpos[0]*photpos[0] + photpos[1]*photpos[1]), photpos[2])
+            refIndex = envStart["refIndex"]
+            (rsp, uz) = RFresnel(tissueExtMedium, refIndex , costheta) # new uz 
             ux  = math.sqrt(1.0 - uz*uz) # new ux 
+            uy = 0.0
+
         elif  (mcflag == 2):
-            # ISOTROPIC PO SOURCE AT POSITION xs,ys,zs 
+            # ISOTROPIC POINT SOURCE AT POSITION xs,ys,zs 
             # Initial position 
             phot.update_positon(xs, ys, zs)
-            #x = xs
-            #y = ys
-            #z = zs
             # Initial trajectory as cosines 
             costheta = 1.0 - 2.0*(1-random.random())
             sintheta = math.sqrt(1.0 - costheta*costheta)
@@ -119,13 +116,15 @@ def launch(queue_photons, environmentGeneral, queue_result, ID, tree):
             ux = sintheta*cospsi
             uy = sintheta*sinpsi
             uz = costheta
-            # specular reflectance 
+            # specular reflectance
+            photpos = phot.get_position() 
+            envStart = tree.get_env(math.sqrt(photpos[0]*photpos[0] + photpos[1]*photpos[1]), photpos[2])
+            refIndex = envStart["refIndex"]
             rsp = 0.0
         else: 
             print("choose mcflag between 0 to 2\n")
+            break
         
-        photpos = phot.get_position()
-        envStart = tree.get_env(math.sqrt(photpos[0]*photpos[0] + photpos[1]*photpos[1]), photpos[2])
         mus = envStart["mus"]
         mut = envStart["mua"] + envStart["mus"]
         albedo = envStart["mus"]/mut
@@ -185,13 +184,13 @@ def launch(queue_photons, environmentGeneral, queue_result, ID, tree):
                 
                 #photon has crossed voxel boundary
                 else:
-                    pos = phot.get_position()
-                    if pos[2] <= 0:
-                        rf, uz1 = RFresnel(tissueRefractive, tissueExtMedium, -uz)
+                    if hNew <= 0:
+                        rf, uz1 = RFresnel(refIndex, tissueExtMedium, -uz)
+                        rnd = 1-random.random()   # avoids rnd = 0 
                         if (rnd > rf):
                             phot.update_positon(-s*ux, -s*uy, -s*uz)   #return to original positions
                             # Photon escapes at external angle, uz1 = cos(angle) 
-                            s  = abs(pos[2]/uz) # calculate stepsize to reach surface 
+                            s  = abs(hNew/uz) # calculate stepsize to reach surface 
                             phot.update_positon(s*ux, s*uy, s*uz)
                             pos = phot.get_position()
                             r = math.sqrt(pos[0]*pos[0] + pos[1]*pos[1])   # find radial position r 
@@ -199,10 +198,10 @@ def launch(queue_photons, environmentGeneral, queue_result, ID, tree):
                             ir = min(ir,NR)  # ir = NR is overflow bin 
                             escapeFlux.append((ir, phot.get_weight()))      # increment escaping flux 
                             phot.update_dead()
+                            break
                             
-                        else:
-                            phot.update_positon(0, 0, -pos[2])
-                            uz = -uz
+                        phot.update_positon(0, 0, -hNew)
+                        uz = -uz
                     #check if both voxels have the same environment
                     newEnv = tree.get_env(rNew, hNew)
                     if newEnv["name"] == envName:
@@ -241,77 +240,79 @@ def launch(queue_photons, environmentGeneral, queue_result, ID, tree):
                         iz = min(iz, NZ)    # last bin is for overflow 
                         absorbInfo.append((iz*NR + ir, absorb))          # DROP absorbed weight o bin 
 
+                        sleft = (sleft-s)*mut
                         if sleft <= ls: 
                             sleft = 0
                     
-                    #update positions until the next 
-                    phot.update_positon(s*ux, s*uy, s*uz)   #update positions
-                                              
-                    
-                    newEnv = tree.get_env(r, pos[2])
-                    
-                    mut = newEnv["mua"] + newEnv["mus"]
-                    albedo = newEnv["mus"]/mut
-                    g = newEnv["excitAnisotropy"]
-                    envName = newEnv["name"]
+                        #update positions until the next 
+                        phot.update_positon(s*ux, s*uy, s*uz)   #update positions
+                                                
+                        
+                        newEnv = tree.get_env(r, pos[2])
+                        
+                        mut = newEnv["mua"] + newEnv["mus"]
+                        albedo = newEnv["mus"]/mut
+                        g = newEnv["excitAnisotropy"]
+                        envName = newEnv["name"]
+                        refIndex = newEnv["refIndex"]
 
-                #*** SPIN 
-                # * Scatter photon on new trajectory defined by theta and psi.
-                # * Theta is specified by cos(theta), which is determined 
-                # * based on the Henyey-Greenstein scattering function.
-                # * Convert theta and psi o cosines ux, uy, uz. 
-                # ****
-                # Sample for costheta 
-                rndCos = 1-random.random()
-                if (g == 0.0):
-                    costheta = 2.0*rndCos - 1.0
-                elif (g == 1.0):
-                    costheta = 1.0
+            #*** SPIN 
+            # * Scatter photon on new trajectory defined by theta and psi.
+            # * Theta is specified by cos(theta), which is determined 
+            # * based on the Henyey-Greenstein scattering function.
+            # * Convert theta and psi o cosines ux, uy, uz. 
+            # ****
+            # Sample for costheta 
+            rndCos = 1-random.random()
+            if (g == 0.0):
+                costheta = 2.0*rndCos - 1.0
+            elif (g == 1.0):
+                costheta = 1.0
+            else:
+                temp = (1.0 - g*g)/(1.0 - g + 2*g*rndCos)
+                costheta = (1.0 + g*g - temp*temp)/(2.0*g)
+            sintheta = math.sqrt(1.0 - costheta*costheta)	#sqrt faster than sin()
+
+            # Sample psi. 
+            psi = 2.0*PI*(1-random.random())
+            cospsi = math.cos(psi)
+            if (psi < PI):
+                sinpsi = math.sqrt(1.0 - cospsi*cospsi)	#sqrt faster 
+            else:
+                sinpsi = -math.sqrt(1.0 - cospsi*cospsi)
+
+            # New trajectory. 
+            if (1 - abs(uz) <= 1.0e-12): # close to perpendicular. 
+                uxx = sintheta*cospsi
+                uyy = sintheta*sinpsi
+                if uz>=0:
+                    uzz = costheta
                 else:
-                    temp = (1.0 - g*g)/(1.0 - g + 2*g*rndCos)
-                    costheta = (1.0 + g*g - temp*temp)/(2.0*g)
-                sintheta = math.sqrt(1.0 - costheta*costheta)	#sqrt faster than sin()
+                    uzz = -costheta
+            else:  # usually use this option 
+                temp = math.sqrt(1.0 - uz*uz)
+                uxx = sintheta*(ux*uz*cospsi - uy*sinpsi)/temp + ux*costheta
+                uyy = sintheta*(uy*uz*cospsi + ux*sinpsi)/temp + uy*costheta
+                uzz = -sintheta*cospsi*temp + uz*costheta
 
-                # Sample psi. 
-                psi = 2.0*PI*(1-random.random())
-                cospsi = math.cos(psi)
-                if (psi < PI):
-                    sinpsi = math.sqrt(1.0 - cospsi*cospsi)	#sqrt faster 
+            # Update trajectory 
+            ux = uxx
+            uy = uyy
+            uz = uzz
+
+            #*** CHECK ROULETTE 
+            # * If photon weight below THRESHOLD, then terminate photon using
+            # * Roulette technique. Photon has CHANCE probability of having 
+            # * its weight increased by factor of 1/CHANCE,
+            # * and 1-CHANCE probability of terminating.
+            # ****
+            if (phot.get_weight() < THRESHOLD):
+                rnd = 1-random.random()
+                if (rnd <= CHANCE):
+                    phot.set_weight(phot.get_weight() / CHANCE)
+                    #W /= CHANCE
                 else:
-                    sinpsi = -math.sqrt(1.0 - cospsi*cospsi)
-
-                # New trajectory. 
-                if (1 - abs(uz) <= 1.0e-12): # close to perpendicular. 
-                    uxx = sintheta*cospsi
-                    uyy = sintheta*sinpsi
-                    if uz>=0:
-                        uzz = costheta
-                    else:
-                        uzz = -costheta
-                else:  # usually use this option 
-                    temp = math.sqrt(1.0 - uz*uz)
-                    uxx = sintheta*(ux*uz*cospsi - uy*sinpsi)/temp + ux*costheta
-                    uyy = sintheta*(uy*uz*cospsi + ux*sinpsi)/temp + uy*costheta
-                    uzz = -sintheta*cospsi*temp + uz*costheta
-
-                # Update trajectory 
-                ux = uxx
-                uy = uyy
-                uz = uzz
-
-                #*** CHECK ROULETTE 
-                # * If photon weight below THRESHOLD, then terminate photon using
-                # * Roulette technique. Photon has CHANCE probability of having 
-                # * its weight increased by factor of 1/CHANCE,
-                # * and 1-CHANCE probability of terminating.
-                # ****
-                if (phot.get_weight() < THRESHOLD):
-                    rnd = 1-random.random()
-                    if (rnd <= CHANCE):
-                        phot.set_weight(phot.get_weight() / CHANCE)
-                        #W /= CHANCE
-                    else:
-                        phot.update_dead()
+                    phot.update_dead()
         
 
         #return absorbInfo, escapFlux, tempRspot, Atot
@@ -424,37 +425,21 @@ def RFresnel(n1,		# incident refractive index.
 #**********************************************************
 def SaveFile(Nfile,  J,  F,  S,  A,  E, environmentGeneral, Nphotons):
 
-    mua = environmentGeneral["mua"]
-    mus = environmentGeneral["mus"]
     mcflag = environmentGeneral["mcflag"]        #0 = collimated uniform, 1 = Gaussian, 2 = isotropic po
     radius = environmentGeneral["radius"]        #radius of beam (1/e width if Gaussian) (if mcflag < 2)
-    tissueRefractive = environmentGeneral["tissueRefractive"]    #refractive index of tissue, former tissueRefractive
-    tissueExtMedium = environmentGeneral["tissueExtMedium"]      #refractive index of external medium, former tissueExtMedium
-    zfocus = environmentGeneral["zfocus"]        #depth of focus (if Gaussian (if mcflag = 1)
-    PI = 3.1415926
     xs = environmentGeneral["xs"]                #used if mcflag = 2, isotropic pt source
     ys = environmentGeneral["ys"]                #used if mcflag = 2, isotropic pt source
     zs = environmentGeneral["zs"]                #used if mcflag = 2, isotropic pt source
-    mut = environmentGeneral["mua"] + environmentGeneral["mus"]        #mua: absorption coefficient [cm^-1], mus: scattering coefficient [cm^-1]
-    boundaryflag = environmentGeneral["boundaryflag"]    #boundaryflag = 1 if air/tissue surface, = 0 if infinite medium
     dr = environmentGeneral["radialSize"]/environmentGeneral["bins"] #radial bin size [cm]
     dz = environmentGeneral["depthSize"]/environmentGeneral["bins"] #depth bin size [cm]
     NR = environmentGeneral["bins"]                        #number of radial bins
     NZ = environmentGeneral["bins"]                        #number of depth bins
     waist = environmentGeneral["waist"]                  #1/e radius of Gaussian focus
-    g = environmentGeneral["excitAnisotropy"]                          #excitation anisotropy [dimensionless]
-    THRESHOLD = environmentGeneral["THRESHOLD"]          #used in roulette        
-    CHANCE = environmentGeneral["CHANCE"]                #used in roulette
 
     print("mcOUT%d.dat" % Nfile)
     file = open("mcOUT" + str(Nfile) + ".dat", "w")
 
     # pr run parameters 
-    file.write("%0.3e\tmua, absorption coefficient [1/cm]\n" % mua)
-    file.write("%0.4f\tmus, scattering coefficient [1/cm]\n" % mus)
-    file.write("%0.4f\tg, anisotropy [-]\n" % g)
-    file.write("%0.4f\tn1, refractive index of tissue\n" % tissueRefractive)
-    file.write("%0.4f\tn2, refractive index of outside medium\n" % tissueExtMedium)
     file.write("%d\tmcflag\n" % mcflag)
     file.write("%0.4f\tradius, radius of flat beam or 1/e radius of Gaussian beam [cm]\n" % radius)
     file.write("%0.4f\twaist, 1/e waist of focus [cm]\n" % waist)
@@ -503,7 +488,7 @@ if __name__ == '__main__':
     environmentGeneral = input_data.environmentGeneral
     envManager = manageEnv.manageEnv()
     for env in input_data.envDetail:
-        envManager.add_environment(env["name"], env["mua"], env["mus"], env["excitAnisotropy"], env["height"], env["radius"], env["default"], environmentGeneral["bins"]/environmentGeneral["depthSize"])
+        envManager.add_environment(env["name"], env["mua"], env["mus"], env["excitAnisotropy"], env["refractiveIndex"], env["height"], env["radius"], env["default"], environmentGeneral["bins"]/environmentGeneral["depthSize"])
     #**********************
     #* MAIN PROGRAM
     #*********************
@@ -590,7 +575,6 @@ if __name__ == '__main__':
 
     queue_result = Queue()
     queue_photons = Queue()
-    queue_search = Queue()
 
     #*** LAUNCH 
     #   Initialize photon position and trajectory.

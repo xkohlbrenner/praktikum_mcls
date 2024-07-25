@@ -32,11 +32,7 @@ class QuadTree:
                 tempbranch.env = 0
         return tempbranch
     
-    #a nodes gets an environment, if all children are part of the same environment
-    #this process can first be done, if the tree is build and all nodes at the lowest area have a environment
-    def set_environments(self):
-        self.Tree[0].look_env()
-    
+       
     #returns the environment based on the porvided point variabless
     def get_env(self, x, y):
         #Tree[0] is the first node and therefore the root of the tree

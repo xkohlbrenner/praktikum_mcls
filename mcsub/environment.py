@@ -1,11 +1,12 @@
 import sympy as sp
 class environment:
 
-    def __init__(self, name, mua, mus, excitAnisotropy, height, radius, default):
+    def __init__(self, name, mua, mus, excitAnisotropy, refractiveIndex, height, radius, default):
         self.name = name
         self.mua = mua
         self.mus = mus
         self.excitAnisotropy = excitAnisotropy
+        self.refIndex = refractiveIndex
         self.default = default                      #1, if default env, else 0
         if self.default == 0:
             self.height = height
@@ -20,4 +21,4 @@ class environment:
 
     
     def get_variables(self):
-        return {"name": self.name, "mua": self.mua, "mus": self.mus, "excitAnisotropy": self.excitAnisotropy}
+        return {"name": self.name, "mua": self.mua, "mus": self.mus, "excitAnisotropy": self.excitAnisotropy, "refIndex": self.refIndex}

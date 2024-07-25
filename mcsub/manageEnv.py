@@ -4,18 +4,18 @@ class manageEnv:
 
     def __init__(self):
         self.envArray = []      #all environments that are not default
-        self.envDefault =  environment("define in manageEnv", 1, 1, 1, "x+y+z=0", 0, 1)   #default environment
+        self.envDefault =  environment("define in manageEnv", 1, 1, 1, 1, "x+y+z=0", 0, 1)   #default environment
 
-    def add_environment(self, name, mua, mus, excitAnisotropy, height, radius, default, bins):
+    def add_environment(self, name, mua, mus, excitAnisotropy, refractiveIndex, height, radius, default, bins):
         if default == 0:
             height = [height[0]*bins, height[1]*bins]
             radius *= bins
 
-            self.envArray.append(environment(name, mua, mus, excitAnisotropy, height, radius, default))
+            self.envArray.append(environment(name, mua, mus, excitAnisotropy, refractiveIndex, height, radius, default))
         else:
             if self.envDefault.name != "define in manageEnv":
                 raise ValueError("Multiple default environments defined")
-            self.envDefault = environment(name, mua, mus, excitAnisotropy, height, radius, default)
+            self.envDefault = environment(name, mua, mus, excitAnisotropy, refractiveIndex, height, radius, default)
     
 
     #find the corresponding environement for a point
@@ -27,7 +27,7 @@ class manageEnv:
                 return env.get_variables()
         return self.envDefault.get_variables()
     
-    #updates the environment list
+    #updates a 1D environment lista
     #based on the radius and height only spefic bins are checked if they are in the corresponding environment
     def assign_env(self, envList, pixel):
         for env in self.envArray:
