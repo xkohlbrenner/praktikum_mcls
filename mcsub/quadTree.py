@@ -10,8 +10,6 @@ class QuadTree:
         tempbranch = Node(r1, r2, h1, h2)
         self.Tree.append(tempbranch)
         if depth == 0:
-            #print(str(x1) + " " + str(h1) + " " + str(z1))
-            #print(int(abs(x1)*pixel*pixel+abs(h1)*pixel+abs(z1)))
             half = int(pixel/2)
             tempbranch.set_env(envList[int((h1+half)*pixel+(r1+half))])
         else:
@@ -40,7 +38,6 @@ class QuadTree:
         env = node.get_env(x, y)
 
         return env
-        
-    
+            
     def get_node(self, node):
          return self.Tree[node]

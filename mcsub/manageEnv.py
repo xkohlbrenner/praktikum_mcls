@@ -6,6 +6,7 @@ class manageEnv:
         self.envArray = []      #all environments that are not default
         self.envDefault =  environment("define in manageEnv", 1, 1, 1, 1, "x+y+z=0", 0, 1)   #default environment
 
+    # adds an additional environment
     def add_environment(self, name, mua, mus, excitAnisotropy, refractiveIndex, height, radius, default, bins):
         if default == 0:
             height = [height[0]*bins, height[1]*bins]

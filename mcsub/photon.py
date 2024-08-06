@@ -31,16 +31,18 @@ class photon:
     
     def set_weight(self, w):
         self.weight = w
-    #update weight of the photon
+
+    # adss weight to the photon weight
     def update_weight(self, w):
         self.weight += w
 
     def get_weight(self):
         return self.weight
 
-    #photon dies
+    # photon dies
     def update_dead(self): 
         self.status = 0
     
+    # returns, if photon is alive (1) or dead (0)
     def get_status(self):
         return self.status

@@ -1,37 +1,52 @@
-Nphotons = 100000    #number of photons
+# This is the input file. 
+# If you are unsure about your changes, I highly recommend to make a copy of the initial file.
 
+
+
+#number of photons
+Nphotons = 100000    
+
+#all data about the tissue and the beams
 environmentGeneral = {
-    "mcflag": 0,            	        #0 = collimated uniform, 1 = Gaussian, 2 = isotropic point
-    "radius": 0,                        #radius of beam (1/e width if Gaussian) (if mcflag < 2)
-    "tissueExtMedium": 1,               #refractive index of external medium
-    "zfocus": 1,                        #depth of focus (if Gaussian (if mcflag = 1)
-    "PI": 3.1415926,
-    "xs": 0,                               #isotropic pt source, used if mcflag = 2
-    "ys": 0,                               #isotropic pt source, used if mcflag = 2
-    "zs": 0,                               #isotropic pt source, used if mcflag = 2
-    "boundaryflag": 1,           #boundaryflag = 1 if air/tissue surface, = 0 if infinite medium
+#0 = collimated uniform, 1 = Gaussian, 2 = isotropic point    
+    "mcflag": 0,            	        
+
+#variables for uniform and gaussian beams (mcflag= 1, 2)
+    "radius": 0,                        #radius of beam (1/e width if Gaussian)
+
+#gaussian beam variables (mcflag=1)
+    "waist": 0.1,                        #1/e radius of Gaussian focus
+    "zfocus": 1,                        #depth of focus
+
+#isotropic point source variables (mcflag=2)   
+    "xs": 0,                               
+    "ys": 0,                               
+    "zs": 0,                               
+
+#tissue variables
     "radialSize": 0.003,                #radial size in [cm]
     "depthSize": 0.003,                 #depth size in [cm]
-    "NR": 256,                       #number of radial bins
-    "NZ": 256,                        #number of depth bins
-    "bins": 64,
-    "waist": 0.1,                         #1/e radius of Gaussian focus
-    "THRESHOLD": 0.0001,                  #used in roulette        
-    "CHANCE": 0.1,                        #used in roulette
-    "mua": 1,                              #mua: absorption coefficient [cm^-1],
-    "mus": 100,                              #mus: scattering coefficient [cm^-1]
-    "excitAnisotropy": 0.9,
+    "bins": 128,                         #number of radial and depth bins, needs to be 2^n
+    "tissueExtMedium": 1,               #refractive index of external medium
+
+#roulette    
+    "THRESHOLD": 0.0001,                        
+    "CHANCE": 0.1,                      
+
+#constant variables
+    "PI": 3.1415926,
 }
 
+#Here all environment data, inclusive the position at the tissue is declared
 envDetail = [
     {
         "name": "standard tissue",
-        "mua": 1,                              #mua: absorption coefficient [cm^-1],
-        "mus": 100,                              #mus: scattering coefficient [cm^-1]
-        "excitAnisotropy": 0.9,                    #excitation anisotropy [dimensionless]
-        "refractiveIndex": 1.4,
-        "height": [0.001, 0.002],                           #only needed, if default is 0
-        "radius": 0.001,
+        "mua": 1,                               #mua: absorption coefficient [cm^-1],
+        "mus": 100,                             #mus: scattering coefficient [cm^-1]
+        "excitAnisotropy": 0.9,                 #excitation anisotropy [dimensionless]
+        "refractiveIndex": 1.4,                 #refractive index
+        "height": [0.001, 0.002],               #only needed, if default is 0
+        "radius": 0.003,
         "default": 1
     },
     {
@@ -41,7 +56,7 @@ envDetail = [
         "excitAnisotropy": 0.9000,                    #excitation anisotropy [dimensionless]
         "refractiveIndex": 1.351,
         "height": [0.001, 0.002],                           #in [cm]
-        "radius": 0.001,                                #in [cm]
+        "radius": 0.003,                                #in [cm]
         "default": 0
     }
 ]
